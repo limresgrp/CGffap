@@ -10,11 +10,15 @@ from pathlib import Path
 class EquiValReporter(object):
     def __init__(self, dataset):
         self.dataset = dataset
-        self.conf  = None
+        self.config_bonds  = None
+        self.config_bonds_dict  = None
         self.config_angles = None
+        self.config_angles_dict = None
         self.sides = None
         self.config_bead_charge = None
+        self.config_bead_charge_dict = None
         self.config_improper_dih = None
+        self.config_improper_dih_dict = None
 
     def bondMapper(self, config_file_path):
 
@@ -199,7 +203,8 @@ class EquiValReporter(object):
                     conf_dict[str(root_bead + '-' + leaf_bead)] = bead_bond_dict_mean[root_bead][leaf_bead]
                     config_bonds.append("{}-{} : {}".format(root_bead,leaf_bead, bead_bond_dict_mean[root_bead][leaf_bead]))
         
-        self.conf = conf_dict
+        self.config_bonds = config_bonds
+        self.config_bonds_dict = conf_dict
         self.dataset['bond_indices'] = sorted_all_bonds_mat
 
         return True
@@ -273,6 +278,8 @@ class EquiValReporter(object):
             config_angles.append("{} : {}".format(i,j))
         
         self.config_angles = config_angles
+        self.config_angles_dict = angle_dic
+        self.dataset['angle_indices'] = angle_indices
 
         return True
     
@@ -287,35 +294,26 @@ class EquiValReporter(object):
                     for i in range(bead):
                         temp.append(index + i)
                     bead_dih.append(temp)
-                    
-                
-                print(bead_dih)
+            
             else:
                 indices.append(np.where(bead == self.dataset['bead_idnames'])[0])
-                print(indices[-1])
 
         dihedrals = {}
         for residue in bead_dih:
-            print(residue)
             if len(residue) == 6:
                 residue.pop(0)
                 residue.pop(2)
-                print(residue)
                 poses  = self.dataset['bead_pos'][:,residue]
-                # dihedral.append()
                 
             elif len(residue) == 5:
                 residue.pop(0)
                 residue = np.asanyarray(residue)
-                print(residue)
                 poses  = self.dataset['bead_pos'][:,residue]
 
             
-            # print(poses[0])
             plane1 = [poses[:,0], poses[:,1], poses[:,2]]
             plane2 = [poses[:,1], poses[:,2], poses[:,3]]
-            # dihedral.append()
-            # print(plane1[1], plane2[0])
+
             vector1 = plane1[0] - plane1[1]
             vector2 = plane1[2] - plane1[1]
             vector3 = plane2[0] - plane2[1]
@@ -331,12 +329,7 @@ class EquiValReporter(object):
             binorm1 /=  np.linalg.norm(binorm1, axis=-1)[:,None]
             binorm2 /=  np.linalg.norm(binorm2, axis=-1)[:,None]
 
-            # np.dot(binorm1[:,None], binorm2[:,None])
-            # print(unit_vec1[0], unit_vec2[0])
-            # print("binorm = ",binorm1.shape, binorm1[0])
-
             torsion = np.average(np.arccos(np.sum(binorm1[0] * binorm2[0], axis=-1)) - np.pi)
-            print(vector1[0], vector2[0], vector3[0],vector4[0])
             dihedrals[str(residue[0]) + "-" + str(residue[1]) + "-" + str(residue[2]) + "-" + str(residue[3])] = torsion
 
         dih_indices = np.asanyarray([list(map(int, item.split('-'))) for item in dihedrals.keys()])
@@ -346,10 +339,9 @@ class EquiValReporter(object):
 
         dih_dic = conf_dihedrals
         dih_array = np.asanyarray([values for values in dihedrals.values()])
-        print(dih_array)
+
         for i in self.dataset['bead_idnames'][dih_indices]:
             rows = np.where(self.dataset['bead_idnames'][dih_indices[:,0]].__eq__(i[0]))[0]
-            print(i,rows,dih_indices[rows,0], self.sides)
             
             dih_dic[i[0] + "-" + i[1] + "-" + i[2] + "-" + i[3]] = np.mean(np.asanyarray(dih_array[rows]))
 
@@ -359,6 +351,8 @@ class EquiValReporter(object):
         config_dihedrals_per_bead
 
         self.config_improper_dih = config_dihedrals_per_bead
+        self.config_improper_dih_dict = dih_dic
+        self.dataset['improper_dih_indices'] = dih_indices
 
         return True
     
@@ -371,7 +365,6 @@ class EquiValReporter(object):
                 bead_charges.append(+1)
             else:
                 bead_charges.append(0)
-        print(bead_charges)
         self.dataset['bead_charges'] = np.asanyarray(bead_charges).reshape(-1,1)
 
         beadcharges = list(zip(self.dataset['bead_idnames'], self.dataset['bead_charges']))
@@ -384,7 +377,9 @@ class EquiValReporter(object):
         config_BeadCharges_per_bead = []
         for root_bead in bead_charge_dict:
             config_BeadCharges_per_bead.append("{} : {}".format(root_bead, bead_charge_dict[root_bead][0]))
+        
         self.config_bead_charge = config_BeadCharges_per_bead
+        self.config_bead_charge_dict = bead_charge_dict
 
         return True
 
@@ -399,11 +394,43 @@ class EquiValReporter(object):
         with open(output_file, 'w') as f:
             for line in self.config_improper_dih:
                 f.write(f"{line}\n")
+
+        print(f"{output_file} successfully saved!")
+
+        output_file = os.path.join(reportPath, "config.angles.yaml")
+
+        with open(output_file, 'w') as f:
+            for line in self.config_angles:
+                f.write(f"{line}\n")
+
+        print(f"{output_file} successfully saved!")
+
+        output_file = os.path.join(reportPath, "config.bonds.yaml")
+
+        with open(output_file, 'w') as f:
+            for line in self.config_bonds:
+                f.write(f"{line}\n")
+        print(f"{output_file} successfully saved!")
+
+        output_file = os.path.join(reportPath, "config.beadcharges.yaml")
+
+        with open(output_file, 'w') as f:
+            for line in self.config_bead_charge:
+                f.write(f"{line}\n")
         print(f"{output_file} successfully saved!")
 
 
     def getBonds(self):
-        return self.conf
+        return self.config_bonds_dict
+    
+    def getAngles(self):
+        return self.config_angles_dict
+    
+    def getImproperDihs(self):
+        return self.config_improper_dih_dict
+    
+    def getBeadCharges(self):
+        return self.config_bead_charge_dict
 
 
                                         
