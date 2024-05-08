@@ -283,7 +283,7 @@ class EquiValReporter(object):
 
         return True
     
-    def improperDihedralMapper(self):
+    def improperDihedralMapper(self, conf_angles_path):
         dihedral_conf = ['TRP_BB', 6, 'TYR_BB', 5]
         indices = []
         bead_dih = []
@@ -335,7 +335,7 @@ class EquiValReporter(object):
         dih_indices = np.asanyarray([list(map(int, item.split('-'))) for item in dihedrals.keys()])
         self.dataset['bead_names'][dih_indices[:,0]]
 
-        conf_dihedrals: list = yaml.safe_load(Path("config files/config.naive.per.bead.type.dihedrals.yaml").read_text())
+        conf_dihedrals: list = yaml.safe_load(Path(conf_angles_path).read_text())
 
         dih_dic = conf_dihedrals
         dih_array = np.asanyarray([values for values in dihedrals.values()])
