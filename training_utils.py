@@ -38,10 +38,10 @@ class CGDataset(Dataset):
         return datum
     
 class TrainSystem(torch.nn.Module):
-    def __init__(self, dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges, device_index = 0):
+    def __init__(self, dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges):
         super().__init__()
 
-        self.potential = tm.ForceModel(dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges, device_index = device_index)
+        self.potential = tm.ForceModel(dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges)
 
         self.model  = tm.ForceMapper(self.potential)
 
@@ -145,14 +145,14 @@ class TrainSystem(torch.nn.Module):
             # loss_matrix.append(np.mean(loss_plot))
             # print("loss = ",np.mean(loss_plot), "epoch =", m_epoch)
 
-
             mean_zeroloss = loss_fn(batch['bead_forces']*0, batch['bead_forces'] ).detach().cpu().numpy()
+            mean_zeroloss_val = loss_fn(val_batch['bead_forces']*0, val_batch['bead_forces'] ).detach().cpu().numpy()
 
             # Print and save results
             mean_train_loss = np.mean(loss_plot)
             mean_val_loss = np.mean(val_loss_plot)
             # loss_matrix.append(mean_train_loss)
-            print(f"Epoch {m_epoch}: Train Loss = {mean_train_loss}, Validation Loss = {mean_val_loss}, Zero Loss = {mean_zeroloss}")
+            print(f"Epoch {m_epoch}: Train Loss = {mean_train_loss:.3f}, Val Loss = {mean_val_loss:.3f}, Zero Loss Train = {mean_zeroloss:.3f}, Zero Loss Val = {mean_zeroloss_val:.3f}")
 
                 # Store losses for plotting
             train_losses.append(mean_train_loss)
