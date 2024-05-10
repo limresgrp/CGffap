@@ -57,7 +57,7 @@ class TrainSystem(torch.nn.Module):
         self.batched_val_forces_plot = []
         self.initialguess = []
 
-    def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt'):
+    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt'):
         self.model.train()
         writer = SummaryWriter()
 
@@ -131,13 +131,15 @@ class TrainSystem(torch.nn.Module):
                 #     return loss
 
                 optimizer.step()
-                # for n, p in self.model.named_parameters():
-                #     if n in [ 'module.angle_spring_constant_vals', 'module.dihedral_const_vals', 'module.proper_dih_const', 'module.proper_dih_const_BB']: #, 'module.lj_const','module.bond_H_strength_const', 'module.dispertion_const'
-                #         p.data = p.data.clamp_(min=0)
-                #     if n in ['module.bead_charges_vals']:
-                #         p.data = p.data.clamp_(min=-1, max=1)
-                #     if n in ['module.equ_val_angles_vals', 'module.proper_phase_shift']:
-                #         p.data = p.data.clamp_(min=0, max = torch.pi)
+                for n, p in self.model.named_parameters():
+                    if n in [ 'module.angle_spring_constant_vals', 'module.dihedral_const_vals', 'module.proper_dih_const', 'module.proper_dih_const_BB']: #, 'module.lj_const','module.bond_H_strength_const', 'module.dispertion_const'
+                        p.data = p.data.clamp_(min=0)
+                    if n in ['module.bead_charges_vals']:
+                        p.data = p.data.clamp_(min=-1, max=1)
+                    if n in ['module.equ_val_angles_vals', 'module.proper_phase_shift']:
+                        p.data = p.data.clamp_(min=0, max = torch.pi)
+                    if n in ['module.bead_radii']:
+                        p.data = p.data.clamp_(min=0.09)
                     # self.per_frame.append(loss_plot)
                 # self.losswith0.append(losswith0single)
             # loss_matrix.append(np.mean(loss_plot))
@@ -189,14 +191,14 @@ class TrainSystem(torch.nn.Module):
         # plt.savefig("lossvsepochChignolinfoldednandunfolded177epochsearlystopped", format = "pdf")
         plt.show()
 
-    def plotForceMathing(self, bead_index = 0):
+    def plotForceMathing(self, bead_index = 0, to_frame = 100):
 
         plt.figure(figsize=(10, 5))
 
         # x-axis plot
         fig1, ax1 = plt.subplots()
-        ax1.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[1][:,bead_index,0], label='Target Force x')
-        ax1.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[0][:,bead_index,0], label='Trained Force x')
+        ax1.plot(range(0, to_frame), self.batched_forces_plot[1][:to_frame,bead_index,0], label='Target Force x')
+        ax1.plot(range(0, to_frame), self.batched_forces_plot[0][:to_frame,bead_index,0], label='Trained Force x')
         ax1.set_xlabel('Frame')
         ax1.set_ylabel('Force')
         ax1.set_title('X Force Comparison')
@@ -204,8 +206,8 @@ class TrainSystem(torch.nn.Module):
 
         # y-axis plot
         fig2, ax2 = plt.subplots()
-        ax2.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[1][:,bead_index,1], label='Target Force y')
-        ax2.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[0][:,bead_index,1], label='Trained Force y')
+        ax2.plot(range(0, to_frame), self.batched_forces_plot[1][:to_frame,bead_index,1], label='Target Force y')
+        ax2.plot(range(0, to_frame), self.batched_forces_plot[0][:to_frame,bead_index,1], label='Trained Force y')
         ax2.set_xlabel('Frame')
         ax2.set_ylabel('Force')
         ax2.set_title('Y Force Comparison')
@@ -213,8 +215,8 @@ class TrainSystem(torch.nn.Module):
 
         # z-axis plot
         fig1, ax3 = plt.subplots()
-        ax3.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[1][:,bead_index,2], label='Target Force z')
-        ax3.plot(range(0, self.batched_forces_plot[0].shape[0]), self.batched_forces_plot[0][:,bead_index,2], label='Trained Force z')
+        ax3.plot(range(0, to_frame), self.batched_forces_plot[1][:to_frame,bead_index,2], label='Target Force z')
+        ax3.plot(range(0, to_frame), self.batched_forces_plot[0][:to_frame,bead_index,2], label='Trained Force z')
         ax3.set_xlabel('Frame')
         ax3.set_ylabel('Force')
         ax3.set_title('Z Force Comparison')
@@ -222,14 +224,14 @@ class TrainSystem(torch.nn.Module):
 
         plt.show()
 
-    def plotValForceMathing(self, bead_index = 0):
+    def plotValForceMathing(self, bead_index = 0, to_frame =100):
 
         plt.figure(figsize=(10, 5))
 
         # x-axis plot
         fig1, ax1 = plt.subplots()
-        ax1.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[1][:,bead_index,0], label='Target Force x')
-        ax1.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[0][:,bead_index,0], label='Trained Force x')
+        ax1.plot(range(0, to_frame), self.batched_val_forces_plot[1][:to_frame,bead_index,0], label='Target Force x')
+        ax1.plot(range(0, to_frame), self.batched_val_forces_plot[0][:to_frame,bead_index,0], label='Trained Force x')
         ax1.set_xlabel('Frame')
         ax1.set_ylabel('Force')
         ax1.set_title('X Force Comparison')
@@ -237,8 +239,8 @@ class TrainSystem(torch.nn.Module):
 
         # y-axis plot
         fig2, ax2 = plt.subplots()
-        ax2.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[1][:,bead_index,1], label='Target Force y')
-        ax2.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[0][:,bead_index,1], label='Trained Force y')
+        ax2.plot(range(0, to_frame), self.batched_val_forces_plot[1][:to_frame,bead_index,1], label='Target Force y')
+        ax2.plot(range(0, to_frame), self.batched_val_forces_plot[0][:to_frame,bead_index,1], label='Trained Force y')
         ax2.set_xlabel('Frame')
         ax2.set_ylabel('Force')
         ax2.set_title('Y Force Comparison')
@@ -246,8 +248,8 @@ class TrainSystem(torch.nn.Module):
 
         # z-axis plot
         fig1, ax3 = plt.subplots()
-        ax3.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[1][:,bead_index,2], label='Target Force z')
-        ax3.plot(range(0, self.batched_val_forces_plot[0].shape[0]), self.batched_val_forces_plot[0][:,bead_index,2], label='Trained Force z')
+        ax3.plot(range(0, to_frame), self.batched_val_forces_plot[1][:to_frame,bead_index,2], label='Target Force z')
+        ax3.plot(range(0, to_frame), self.batched_val_forces_plot[0][:to_frame,bead_index,2], label='Trained Force z')
         ax3.set_xlabel('Frame')
         ax3.set_ylabel('Force')
         ax3.set_title('Z Force Comparison')

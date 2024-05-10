@@ -205,6 +205,11 @@ class EquiValReporter(object):
         
         self.config_bonds = config_bonds
         self.config_bonds_dict = conf_dict
+
+        test = np.sort(sorted_all_bonds_mat, axis=1)
+        test = np.unique(test, axis=0)
+        sorted_all_bonds_mat = test
+        
         self.dataset['bond_indices'] = sorted_all_bonds_mat
 
         return True
