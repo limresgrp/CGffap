@@ -31,18 +31,21 @@ class ForceReporter(object):
 
 
 class ForceModelConvert(torch.nn.Module):
-   def __init__(self, model, unit):
+   def __init__(
+        self,
+        model,
+        pos2unit: float,
+        energy2unit: float,
+    ):
       super().__init__()
       self.model: torch.nn.Module = model
-      self.unit: float = unit
+      self.pos2unit: float = pos2unit
+      self.energy2unit: float = energy2unit
 
    def forward(self, positions: torch.Tensor):
 
-      positions = positions * self.unit
+      positions = positions * self.pos2unit
       
-      potential = self.model(positions, True)
+      potential = self.model(positions)
 
-      return potential / self.unit
-   
-
-
+      return potential * self.energy2unit / self.pos2unit**2

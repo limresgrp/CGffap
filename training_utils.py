@@ -23,7 +23,7 @@ class CGDataset(Dataset):
         self.data = {}
         for k, v in dict(npzdataset).items():
             if k in ['bead_pos', 'bead_forces']: #,'bead_types', 'bead_mass'
-                self.data[k] = torch.from_numpy(v[::stride]).to('cuda') # data truncated to 10000
+                self.data[k] = torch.from_numpy(v[::stride])
 
     def __len__(self):
         return len(self.data['bead_pos'])
@@ -40,25 +40,23 @@ class CGDataset(Dataset):
 class TrainSystem(torch.nn.Module):
     def __init__(self, dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges):
         super().__init__()
-
         self.potential = tm.ForceModel(dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges)
-
         self.model  = tm.ForceMapper(self.potential)
 
         self.train_pos, self.valid_pos, self.train_force , self.valid_force = train_test_split(dataset['bead_pos'], dataset['bead_forces'], test_size=0.10, random_state=42)
 
         self.loss_matrix = []
         self.per_frame = []  
-        self.train = None
-        self.valid = None
+        self.train_loss = None
+        self.valid_loss = None
         self.zero = None
         self.losswith0 = []
         self.batched_forces_plot = []
         self.batched_val_forces_plot = []
         self.initialguess = []
 
-    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model'):
-        self.model.train()
+    def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
+        self.model.to(device)
         writer = SummaryWriter()
 
         base_params = [p for name, p in self.named_parameters() if name not in [ 'potential.angle_spring_constant_vals', 
@@ -94,14 +92,19 @@ class TrainSystem(torch.nn.Module):
             data,
             batch_size = batch_size,
             num_workers = num_workers,
-            shuffle=True
+            shuffle=True,
         )
 
         dataset_val = dataset
         dataset_val['bead_pos'] = self.valid_pos
         dataset_val['bead_forces'] = self.valid_force
 
-        val_loader = DataLoader(CGDataset(dataset_val),batch_size = len(self.valid_force), num_workers = num_workers )
+        val_loader = DataLoader(
+            CGDataset(dataset_val),
+            batch_size = batch_size,
+            num_workers = num_workers,
+            shuffle=False,
+        )
 
 
         train_losses = []
@@ -125,11 +128,12 @@ class TrainSystem(torch.nn.Module):
 
             loss_plot = []
 
-
              # Validation
             self.model.eval()
             val_loss_plot = []
             for val_batch in val_loader:
+                for k, v in val_batch.items():
+                    val_batch[k] = v.to(device)
                 val_out = self.model(val_batch['bead_pos'])
                 val_loss = loss_fn(val_out , val_batch['bead_forces'] )
                 self.batched_val_forces_plot = [val_out.detach().cpu().numpy() , val_batch['bead_forces'].detach().cpu().numpy()]
@@ -141,6 +145,8 @@ class TrainSystem(torch.nn.Module):
             for batch in loader:
                 # for epoch in range(0,10):
                 # for batch in loader:
+                for k, v in batch.items():
+                    batch[k] = v.to(device)
 
                 optimizer.zero_grad()
                 out = self.model(batch['bead_pos']) 
@@ -201,16 +207,16 @@ class TrainSystem(torch.nn.Module):
                 break
 
         writer.flush()
-        self.train =np.array(train_losses).reshape(-1)
-        self.valid =np.array(val_losses).reshape(-1)
+        self.train_loss = np.array(train_losses).reshape(-1)
+        self.valid_loss = np.array(val_losses).reshape(-1)
             
         return self.model
     
     def plotLosses(self, truncate = 0):
         # Plot losses
         plt.figure(figsize=(10, 5))
-        plt.plot(range(0, len(self.train[truncate:])), self.train[truncate:], label='Training Loss')
-        plt.plot(range(0, len(self.valid[truncate:])), self.valid[truncate:], label='Validation Loss')
+        plt.plot(range(0, len(self.train_loss[truncate:])), self.train_loss[truncate:], label='Training Loss')
+        plt.plot(range(0, len(self.valid_loss[truncate:])), self.valid_loss[truncate:], label='Validation Loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss (kj mol^-1 nm^-1)^2')
         plt.title('Training and Validation Loss Over Epochs')
@@ -318,7 +324,6 @@ class TrainSystem(torch.nn.Module):
         ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
         plt.show()
-
 
     def plotForceMathingByFrame(self, frame = 0):
 
