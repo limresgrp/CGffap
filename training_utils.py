@@ -24,6 +24,7 @@ class CGDataset(Dataset):
         for k, v in dict(npzdataset).items():
             if k in ['bead_pos', 'bead_forces']: #,'bead_types', 'bead_mass'
                 self.data[k] = torch.from_numpy(v[::stride])
+                self.data[k] = torch.from_numpy(v[::stride])
 
     def __len__(self):
         return len(self.data['bead_pos'])
@@ -49,12 +50,16 @@ class TrainSystem(torch.nn.Module):
         self.per_frame = []  
         self.train_loss = None
         self.valid_loss = None
+        self.train_loss = None
+        self.valid_loss = None
         self.zero = None
         self.losswith0 = []
         self.batched_forces_plot = []
         self.batched_val_forces_plot = []
         self.initialguess = []
 
+    def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
+        self.model.to(device)
     def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
         self.model.to(device)
         writer = SummaryWriter()
@@ -91,6 +96,8 @@ class TrainSystem(torch.nn.Module):
         loader = DataLoader(
             data,
             batch_size = batch_size,
+            num_workers = num_workers,
+            shuffle=True,
             num_workers = num_workers,
             shuffle=True,
         )
@@ -134,6 +141,8 @@ class TrainSystem(torch.nn.Module):
             for val_batch in val_loader:
                 for k, v in val_batch.items():
                     val_batch[k] = v.to(device)
+                for k, v in val_batch.items():
+                    val_batch[k] = v.to(device)
                 val_out = self.model(val_batch['bead_pos'])
                 val_loss = loss_fn(val_out , val_batch['bead_forces'] )
                 self.batched_val_forces_plot = [val_out.detach().cpu().numpy() , val_batch['bead_forces'].detach().cpu().numpy()]
@@ -145,6 +154,8 @@ class TrainSystem(torch.nn.Module):
             for batch in loader:
                 # for epoch in range(0,10):
                 # for batch in loader:
+                for k, v in batch.items():
+                    batch[k] = v.to(device)
                 for k, v in batch.items():
                     batch[k] = v.to(device)
 
@@ -209,12 +220,16 @@ class TrainSystem(torch.nn.Module):
         writer.flush()
         self.train_loss = np.array(train_losses).reshape(-1)
         self.valid_loss = np.array(val_losses).reshape(-1)
+        self.train_loss = np.array(train_losses).reshape(-1)
+        self.valid_loss = np.array(val_losses).reshape(-1)
             
         return self.model
     
     def plotLosses(self, truncate = 0):
         # Plot losses
         plt.figure(figsize=(10, 5))
+        plt.plot(range(0, len(self.train_loss[truncate:])), self.train_loss[truncate:], label='Training Loss')
+        plt.plot(range(0, len(self.valid_loss[truncate:])), self.valid_loss[truncate:], label='Validation Loss')
         plt.plot(range(0, len(self.train_loss[truncate:])), self.train_loss[truncate:], label='Training Loss')
         plt.plot(range(0, len(self.valid_loss[truncate:])), self.valid_loss[truncate:], label='Validation Loss')
         plt.xlabel('Epoch')

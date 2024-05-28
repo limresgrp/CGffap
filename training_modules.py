@@ -7,6 +7,8 @@ class ForceModel(torch.nn.Module):
       super().__init__()
       pos2unit = 1.
       eng2unit = 0.239006
+      pos2unit = 1.
+      eng2unit = 0.239006
 
       # Define Indices
       bond_indices:         np.ndarray = dataset['bond_indices']
@@ -82,7 +84,14 @@ class ForceModel(torch.nn.Module):
             np.where(self.nonbonded_type_keys[:,0] == index_key[0])
 
 
-      self.nonbond_dict_index = torch.asarray(self.nonbond_dict_index).to(self.device)
+         try:
+            possible_indices = np.where(self.nonbonded_type_keys[:,0] == index_key[0])[0]
+            self.nonbond_type_dict_index.append(possible_indices[int(np.where(self.nonbonded_type_keys[possible_indices,1] == index_key[1])[-1])])
+         except:
+            np.where(self.nonbonded_type_keys[:,0] == index_key[0])
+
+
+      self.nonbond_dict_index = torch.asarray(self.nonbond_dict_index)
 
       self.nonbond_type_dict_index = torch.from_numpy(np.array(self.nonbond_type_dict_index)).to(self.device)
 
@@ -106,7 +115,11 @@ class ForceModel(torch.nn.Module):
       ## Charges needs to be per bead type not different for each bead ##
       self.e_0 = torch.nn.Parameter(torch.Tensor([8.8541878128e-3]))
       self.e_r = torch.nn.Parameter(torch.Tensor([1])) #########################[8.8541878128e-3]
+      self.e_0 = torch.nn.Parameter(torch.Tensor([8.8541878128e-3]))
+      self.e_r = torch.nn.Parameter(torch.Tensor([1])) #########################[8.8541878128e-3]
       #########################################################################################################
+      self.f_0 = torch.nn.Parameter(torch.Tensor([138.935458]))
+      self.bead_charges_vals = torch.nn.Parameter(torch.reshape(torch.Tensor([i for i in conf_bead_charges.values()]).float(), (-1,)))
       self.f_0 = torch.nn.Parameter(torch.Tensor([138.935458]))
       self.bead_charges_vals = torch.nn.Parameter(torch.reshape(torch.Tensor([i for i in conf_bead_charges.values()]).float(), (-1,)))
       self.bead_charges_keys = np.asanyarray([i for i in conf_bead_charges.keys()])
@@ -115,15 +128,21 @@ class ForceModel(torch.nn.Module):
       for bead_name in bead_idnames:
          self.bead_charge_indices.extend(np.where(self.bead_charges_keys == bead_name)[0])
       self.bead_charge_indices = torch.asarray(self.bead_charge_indices)
+      self.bead_charge_indices = torch.asarray(self.bead_charge_indices)
 
       # bead_charges = dataset['bead_charges']
+      # self.bead_charges = torch.nn.Parameter(torch.from_numpy(bead_charges).float())
+      # self.bead_charge = torch.multiply(bead_charges, bead_charges.T)[self.nonbonded_indices[0],self.nonbonded_indices[1]] # may be paramater
       # self.bead_charges = torch.nn.Parameter(torch.from_numpy(bead_charges).float())
       # self.bead_charge = torch.multiply(bead_charges, bead_charges.T)[self.nonbonded_indices[0],self.nonbonded_indices[1]] # may be paramater
       
       # Bonded Interections 
       self.bond_indices = torch.from_numpy(bond_indices)
+      self.bond_indices = torch.from_numpy(bond_indices)
       
       self.equ_val_bond_dist_keys = np.asanyarray([i for i in conf_bonds.keys()])
+      self.equ_val_bond_dist_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_bonds.values()]) * pos2unit)
+      self.spring_constant_vals = torch.nn.Parameter(torch.Tensor([1000  for i in conf_bonds.values()]) * eng2unit)
       self.equ_val_bond_dist_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_bonds.values()]) * pos2unit)
       self.spring_constant_vals = torch.nn.Parameter(torch.Tensor([1000  for i in conf_bonds.values()]) * eng2unit)
 
@@ -136,11 +155,15 @@ class ForceModel(torch.nn.Module):
 
          self.bond_dist_index.append(np.where(self.equ_val_bond_dist_keys == key)[0][0])
       self.bond_dist_index = torch.asarray(self.bond_dist_index)
+      self.bond_dist_index = torch.asarray(self.bond_dist_index)
 
       # Angle Interactions
       self.angle_indices = torch.from_numpy(angle_indices)
+      self.angle_indices = torch.from_numpy(angle_indices)
 
       self.equ_val_angles_keys = np.asanyarray([i for i in conf_angles.keys()])
+      self.equ_val_angles_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_angles.values()]))
+      self.angle_spring_constant_vals = torch.nn.Parameter(torch.Tensor([10  for i in conf_angles.values()]) * eng2unit)
       self.equ_val_angles_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_angles.values()]))
       self.angle_spring_constant_vals = torch.nn.Parameter(torch.Tensor([10  for i in conf_angles.values()]) * eng2unit)
 
@@ -155,11 +178,15 @@ class ForceModel(torch.nn.Module):
          self.angle_rad_index.append(np.where(self.equ_val_angles_keys == key)[0][0])
          
       self.angle_rad_index = torch.asarray(self.angle_rad_index)
+      self.angle_rad_index = torch.asarray(self.angle_rad_index)
 
       # Dihedral Interactions
       self.improper_dih_indices = torch.from_numpy(improper_dih_indices)
+      self.improper_dih_indices = torch.from_numpy(improper_dih_indices)
 
       self.equ_val_dihedrals_keys = np.asanyarray([i for i in conf_dihedrals.keys()])
+      self.equ_val_dihedrals_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_dihedrals.values()]))
+      self.dihedral_const_vals =  torch.nn.Parameter(torch.Tensor([1  for i in conf_dihedrals.values()]) * eng2unit)
       self.equ_val_dihedrals_vals = torch.nn.Parameter(torch.Tensor([i for i in conf_dihedrals.values()]))
       self.dihedral_const_vals =  torch.nn.Parameter(torch.Tensor([1  for i in conf_dihedrals.values()]) * eng2unit)
 
@@ -167,10 +194,14 @@ class ForceModel(torch.nn.Module):
       for quadruple in self.improper_dih_indices:
          self.dih_rad_index.append(np.where(self.equ_val_dihedrals_keys == bead_idnames[quadruple[0]] + '-' + bead_idnames[quadruple[1]] + '-' + bead_idnames[quadruple[2]] + '-' + bead_idnames[quadruple[3]] )[0][0])
       self.dih_rad_index = torch.asarray(self.dih_rad_index)
+      self.dih_rad_index = torch.asarray(self.dih_rad_index)
 
       # Water Potentials
       self.water_interactions = torch.ones(len(dataset['bead_types']))
+      # Water Potentials
+      self.water_interactions = torch.ones(len(dataset['bead_types']))
 
+      # Proper Dihedrals
       # Proper Dihedrals
       propers=[]
       bead_idnames = []
@@ -217,6 +248,10 @@ class ForceModel(torch.nn.Module):
             torch.zeros_like(bond_norm),
             torch.pow(bond_norm - self.equ_val_bond_dist_vals[self.bond_dist_index], 2) - 0.005
          )
+         torch.max(
+            torch.zeros_like(bond_norm),
+            torch.pow(bond_norm - self.equ_val_bond_dist_vals[self.bond_dist_index], 2) - 0.005
+         )
       )
       return bond_energy
       
@@ -225,6 +260,10 @@ class ForceModel(torch.nn.Module):
       
       angle_energy = (
          0.5 * torch.abs(self.angle_spring_constant_vals[self.angle_rad_index]) *
+         torch.max(
+            torch.zeros_like(angles),
+            torch.pow(angles - self.equ_val_angles_vals[self.angle_rad_index], 2) - 0.05
+         )
          torch.max(
             torch.zeros_like(angles),
             torch.pow(angles - self.equ_val_angles_vals[self.angle_rad_index], 2) - 0.05
@@ -242,6 +281,10 @@ class ForceModel(torch.nn.Module):
             torch.zeros_like(torsion),
             torch.pow((torsion - self.equ_val_dihedrals_vals[self.dih_rad_index]), 2) - 0.05
          )
+         torch.max(
+            torch.zeros_like(torsion),
+            torch.pow((torsion - self.equ_val_dihedrals_vals[self.dih_rad_index]), 2) - 0.05
+         )
       )
 
       return dihedral_energy
@@ -255,6 +298,10 @@ class ForceModel(torch.nn.Module):
             torch.zeros_like(torsion),
             (1 + torch.cos(self.proper_shift * torsion - self.proper_phase_shift)) - 0.05
          )
+         torch.max(
+            torch.zeros_like(torsion),
+            (1 + torch.cos(self.proper_shift * torsion - self.proper_phase_shift)) - 0.05
+         )
       )
 
       return proper_dih_energy
@@ -264,6 +311,10 @@ class ForceModel(torch.nn.Module):
 
       proper_dih_energy = (
          torch.abs(self.proper_dih_const_BB) *
+         torch.max(
+            torch.zeros_like(torsion),
+            (1 + torch.cos(self.proper_shift_BB * torsion - self.proper_phase_shift_BB)) - 0.05
+         )
          torch.max(
             torch.zeros_like(torsion),
             (1 + torch.cos(self.proper_shift_BB * torsion - self.proper_phase_shift_BB)) - 0.05
@@ -400,6 +451,7 @@ class ForceModel(torch.nn.Module):
          if len(positions.shape) == 2:
             positions = positions[None, ...]
 
+         bead_pos = positions
          bead_pos = positions
 
          all_dist = bead_pos[..., None, :] - bead_pos[:, None, ...]
