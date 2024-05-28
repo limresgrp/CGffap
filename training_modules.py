@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-
+from torch import Tensor
 
 class ForceModel(torch.nn.Module):
    def __init__(self, dataset, conf_bonds: dict, conf_angles: dict, conf_dihedrals: dict, conf_bead_charges: dict):
@@ -13,6 +13,8 @@ class ForceModel(torch.nn.Module):
       improper_dih_indices: np.ndarray = dataset['improper_dih_indices']
 
       bond_indices = np.unique(np.sort(bond_indices, axis=1), axis=0) # Safety measure
+
+      self.h_bond_selection = torch.Tensor([15,16]).int().to(self.device)
 
       #
       bead_types = dataset['bead_types']
@@ -52,7 +54,7 @@ class ForceModel(torch.nn.Module):
       self.nonbonded_keys = np.asanyarray([i for i in self.nonbonded_dict.keys()])
       self.nonbonded_vals = torch.from_numpy(np.asanyarray([i for i in self.nonbonded_dict.values()])).to(self.device)
 
-      self.nonbonded_type_keys = np.unique(np.sort(np.array([[dataset['bead_types'][self.nonbonded_indices[0][i]],dataset['bead_types'][self.nonbonded_indices[1][i]]] for i in range(len(self.nonbonded_indices[0]))]), axis=1), axis=0)
+      self.nonbonded_type_keys = np.unique(np.sort(np.array([[bead_types[self.nonbonded_indices[0][i]],bead_types[self.nonbonded_indices[1][i]]] for i in range(len(self.nonbonded_indices[0]))]), axis=1), axis=0)
 
       self.nonbond_dict_index = []
       nonbonded_pairs = [[self.nonbonded_indices[0][i],self.nonbonded_indices[1][i]] for i in range(len(self.nonbonded_indices[0]))]
@@ -65,10 +67,10 @@ class ForceModel(torch.nn.Module):
          elif str(bead_idnames[pair[1]] + '-' + bead_idnames[pair[0]]) in self.nonbonded_keys:
             key = str(bead_idnames[pair[1]] + '-' + bead_idnames[pair[0]])
 
-         if any([all([self.dataset["bead_types"][row[0]], self.dataset["bead_types"][row[1]]] == arr) for arr in self.nonbonded_type_keys]):
-            index_key = np.array([self.dataset["bead_types"][row[0]], self.dataset["bead_types"][row[1]]])
-         elif any([all([self.dataset["bead_types"][row[1]], self.dataset["bead_types"][row[0]]] == arr) for arr in self.nonbonded_type_keys]):
-            index_key = np.array([self.dataset["bead_types"][row[1]], self.dataset["bead_types"][row[0]]])
+         if any([all([bead_types[pair[0]], bead_types[pair[1]]] == arr) for arr in self.nonbonded_type_keys]):
+            index_key = np.array([bead_types[pair[0]], bead_types[pair[1]]])
+         elif any([all([bead_types[pair[1]], bead_types[pair[0]]] == arr) for arr in self.nonbonded_type_keys]):
+            index_key = np.array([bead_types[pair[1]], bead_types[pair[0]]])
 
          self.nonbond_dict_index.append(np.where(self.nonbonded_keys == key)[0][0])
 
@@ -88,9 +90,9 @@ class ForceModel(torch.nn.Module):
       self.nonbonded_indices = torch.from_numpy(np.array(self.nonbonded_indices)).to(self.device)
 
 
-      self.bead_radii = torch.nn.Parameter(torch.Tensor([1.200000e-01 for i in range(0,self.dataset['bead_types'].max()+1)]).to(self.device))
+      self.bead_radii = torch.nn.Parameter(torch.Tensor([1.200000e-01 for i in range(0,bead_types.max()+1)]).to(self.device))
 
-      self.bead_types = torch.nn.Parameter(torch.Tensor(self.dataset['bead_types']).to(self.device))
+      self.bead_types = torch.nn.Parameter(torch.Tensor(bead_types).to(self.device))
       
 
       self.dispertion_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 2.300000e-00  ).to(self.device))
@@ -122,7 +124,8 @@ class ForceModel(torch.nn.Module):
       
       self.equ_val_bond_dist_keys = np.asanyarray([i for i in conf_bonds.keys()])
       self.equ_val_bond_dist_vals = torch.Tensor([i for i in conf_bonds.values()]).to(self.device)
-      self.spring_constant_vals = torch.nn.Parameter(torch.Tensor([4000  for i in conf_bonds.values()]).to(self.device)) 
+      self.spring_constant_vals = torch.Tensor([4000  for i in conf_bonds.values()]).to(self.device)
+
 
       self.bond_dist_index = []
       for row in self.bond_indices:
@@ -139,7 +142,7 @@ class ForceModel(torch.nn.Module):
 
       self.equ_val_angles_keys = np.asanyarray([i for i in conf_angles.keys()])
       self.equ_val_angles_vals = torch.Tensor([i for i in conf_angles.values()]).to(self.device)
-      self.angle_spring_constant_vals = torch.nn.Parameter(torch.Tensor([41  for i in conf_angles.values()]).to(self.device))
+      self.angle_spring_constant_vals = torch.nn.Parameter(torch.Tensor([100  for i in conf_angles.values()]).to(self.device))
 
       self.angle_rad_index = []
 
@@ -184,7 +187,7 @@ class ForceModel(torch.nn.Module):
             proper_indices.append(np.array([propers[index+1],propers[index],propers[index+2],propers[index+3]]))
 
       self.proper_indices = torch.asarray(proper_indices)
-      self.proper_dih_const = torch.nn.Parameter(torch.Tensor([0]).float().to(self.device))
+      self.proper_dih_const = torch.nn.Parameter(torch.Tensor([50 for i in range(0,len(self.proper_indices))]).float().to(self.device))
       self.proper_phase_shift = torch.nn.Parameter(torch.Tensor(torch.zeros(len(self.proper_indices))).float().to(self.device))
       self.proper_shift = torch.nn.Parameter(torch.Tensor(torch.ones(len(self.proper_indices))).float().to(self.device))
 
@@ -200,7 +203,7 @@ class ForceModel(torch.nn.Module):
          proper_BB_indices.append(np.array([BB_indices[index],BB_indices[index+1],BB_indices[index+2],BB_indices[index+3]]))
 
       self.proper_BB_indices = torch.asarray(proper_BB_indices)
-      self.proper_dih_const_BB = torch.nn.Parameter(torch.Tensor([0]).float().to(self.device))
+      self.proper_dih_const_BB = torch.nn.Parameter(torch.Tensor([50 for i in range(0,len(self.proper_BB_indices))]).float().to(self.device))
       self.proper_phase_shift_BB = torch.nn.Parameter(torch.Tensor(torch.zeros(len(self.proper_BB_indices))).float().to(self.device))
       self.proper_shift_BB = torch.nn.Parameter(torch.Tensor(torch.ones(len(self.proper_BB_indices))).float().to(self.device))
 
@@ -212,8 +215,8 @@ class ForceModel(torch.nn.Module):
       # phantom_distances = bead_pos - center_of_mass
       # phantom_norm = torch.norm(phantom_distances, dim=-1)
 
-      # self.phantom_force_coeff = torch.nn.Parameter(torch.Tensor(torch.zeros(len(self.dataset['bead_types']))).float().to(self.device))
-      # self.phantom_distance = torch.nn.Parameter(torch.Tensor(self.phantom_norm).float().to(self.device))
+      # self.phantom_force_coeff = torch.nn.Parameter(torch.Tensor(torch.zeros(len(bead_types))).float().to(self.device))
+      # self.phantom_distance = torch.nn.Parameter(torch.Tensor(phantom_norm).float().to(self.device))
 
 
 
@@ -228,7 +231,7 @@ class ForceModel(torch.nn.Module):
       
    # def phantomForces(self, bead_pos):
 
-   #    center_of_mass = torch.mean(bead_pos, dim=0)
+   #    center_of_mass = torch.mean(bead_pos, dim=1)
 
    #    phantom_distances = bead_pos[:,:,None] - center_of_mass
    #    phantom_norm = torch.norm(phantom_distances, dim=-1)
@@ -258,7 +261,7 @@ class ForceModel(torch.nn.Module):
       return angle_energy
    
    def dihedrals(self, bead_pos):
-      torsion = get_dihedrals(bead_pos, self.improper_dih_indices)
+      torsion = get_dihedrals(bead_pos, self.improper_dih_indices) 
 
       dihedral_energy = (
          0.5 * torch.abs(self.dihedral_const_vals[self.dih_rad_index]) *
@@ -291,26 +294,26 @@ class ForceModel(torch.nn.Module):
 
       
 
-   def dihedral(self, bead_pos):
+   # def dihedral(self, bead_pos):
 
-      # vectors1 = bead_pos[:,self.improper_dih_indices[:,0]] - bead_pos[:,self.improper_dih_indices[:,1]]
-      # vectors2 = bead_pos[:,self.improper_dih_indices[:,2]] - bead_pos[:,self.improper_dih_indices[:,1]]
-      # vectors3 = bead_pos[:,self.improper_dih_indices[:,1]] - bead_pos[:,self.improper_dih_indices[:,2]]
-      # vectors4 = bead_pos[:,self.improper_dih_indices[:,3]] - bead_pos[:,self.improper_dih_indices[:,2]]
+   #    # vectors1 = bead_pos[:,self.improper_dih_indices[:,0]] - bead_pos[:,self.improper_dih_indices[:,1]]
+   #    # vectors2 = bead_pos[:,self.improper_dih_indices[:,2]] - bead_pos[:,self.improper_dih_indices[:,1]]
+   #    # vectors3 = bead_pos[:,self.improper_dih_indices[:,1]] - bead_pos[:,self.improper_dih_indices[:,2]]
+   #    # vectors4 = bead_pos[:,self.improper_dih_indices[:,3]] - bead_pos[:,self.improper_dih_indices[:,2]]
 
-      # unit_vec1 = vectors1[:] / torch.norm(vectors1, dim=-1)[:,:,None]
-      # unit_vec2 = vectors2[:] / torch.norm(vectors2, dim=-1)[:,:,None]
-      # unit_vec3 = vectors3[:] / torch.norm(vectors3, dim=-1)[:,:,None]
-      # unit_vec4 = vectors4[:] / torch.norm(vectors4, dim=-1)[:,:,None]
+   #    # unit_vec1 = vectors1[:] / torch.norm(vectors1, dim=-1)[:,:,None]
+   #    # unit_vec2 = vectors2[:] / torch.norm(vectors2, dim=-1)[:,:,None]
+   #    # unit_vec3 = vectors3[:] / torch.norm(vectors3, dim=-1)[:,:,None]
+   #    # unit_vec4 = vectors4[:] / torch.norm(vectors4, dim=-1)[:,:,None]
 
-      # binorm1 = torch.cross(unit_vec1, unit_vec2, dim=-1) 
-      # binorm2 = torch.cross(unit_vec3, unit_vec4, dim=-1) 
+   #    # binorm1 = torch.cross(unit_vec1, unit_vec2, dim=-1) 
+   #    # binorm2 = torch.cross(unit_vec3, unit_vec4, dim=-1) 
 
-      torsion = self.get_dihedrals_torch(bead_pos,self.improper_dih_indices)- torch.pi
+   #    torsion = self.get_dihedrals_torch(bead_pos,self.improper_dih_indices)- torch.pi
       
-      dihedral_energy = 0.5 * torch.abs(self.dihedral_const_vals[self.dih_rad_index]) * torch.pow((torsion - self.equ_val_dihedrals_vals[self.dih_rad_index]), 2)
+   #    dihedral_energy = 0.5 * torch.abs(self.dihedral_const_vals[self.dih_rad_index]) * torch.pow((torsion - self.equ_val_dihedrals_vals[self.dih_rad_index]), 2)
 
-      return dihedral_energy
+   #    return dihedral_energy
    
    # def get_dihedrals_torch(self, pos: torch.Tensor, dihedral_idcs: torch.Tensor) -> torch.Tensor:
    #    """ Compute dihedral values (in radiants) over specified dihedral_idcs for every frame in the batch
@@ -345,33 +348,33 @@ class ForceModel(torch.nn.Module):
       
    
    
-   def angles(self, bead_pos):
-      vectors1 = bead_pos[:,self.angle_indices[:,0]] - bead_pos[:,self.angle_indices[:,1]]
-      vectors2 = bead_pos[:,self.angle_indices[:,2]] - bead_pos[:,self.angle_indices[:,1]]
+   # def angles(self, bead_pos):
+   #    vectors1 = bead_pos[:,self.angle_indices[:,0]] - bead_pos[:,self.angle_indices[:,1]]
+   #    vectors2 = bead_pos[:,self.angle_indices[:,2]] - bead_pos[:,self.angle_indices[:,1]]
 
-      unit_vec1 = vectors1[:] / torch.norm(vectors1, dim=-1)[:,:,None]
-      unit_vec2 = vectors2[:] / torch.norm(vectors2, dim=-1)[:,:,None]
+   #    unit_vec1 = vectors1[:] / torch.norm(vectors1, dim=-1)[:,:,None]
+   #    unit_vec2 = vectors2[:] / torch.norm(vectors2, dim=-1)[:,:,None]
       
-      angles = torch.arccos(torch.sum(unit_vec1 * unit_vec2, dim=-1))
-      # print(self.average_angles_rad, angles)
+   #    angles = torch.arccos(torch.sum(unit_vec1 * unit_vec2, dim=-1))
+   #    # print(self.average_angles_rad, angles)
       
-      angle_energy = 0.5 * torch.abs(self.angle_spring_constant_vals[self.angle_rad_index]) * torch.pow(angles - self.equ_val_angles_vals[self.angle_rad_index], 2)
-      return angle_energy
+   #    angle_energy = 0.5 * torch.abs(self.angle_spring_constant_vals[self.angle_rad_index]) * torch.pow(angles - self.equ_val_angles_vals[self.angle_rad_index], 2)
+   #    return angle_energy
    
-   def bonds(self, bead_pos):
-      bond_pos = bead_pos[:,self.bond_indices,:]
-      bond_distances = bond_pos[:,:,1,:]-bond_pos[:,:,0,:]
-      # distances = bead_pos[:,:, None, :] - bead_pos[:,None, :, :]
-      bond_norm = torch.norm(bond_distances, dim=-1)
-      # triangular = torch.tril(norm, diagonal=-1)
-      # bond_distances = []
-      # for row in self.bond_indices:
-      #       bond_distances.append(norm[tuple(row)])
+   # def bonds(self, bead_pos):
+   #    bond_pos = bead_pos[:,self.bond_indices,:]
+   #    bond_distances = bond_pos[:,:,1,:]-bond_pos[:,:,0,:]
+   #    # distances = bead_pos[:,:, None, :] - bead_pos[:,None, :, :]
+   #    bond_norm = torch.norm(bond_distances, dim=-1)
+   #    # triangular = torch.tril(norm, diagonal=-1)
+   #    # bond_distances = []
+   #    # for row in self.bond_indices:
+   #    #       bond_distances.append(norm[tuple(row)])
 
                
-      # bond_distances = torch.FloatTensor(bond_distances)
-      bond_energy = 0.5 * torch.abs(self.spring_constant_vals[self.bond_dist_index]) * torch.pow(bond_norm - self.equ_val_bond_dist_vals[self.bond_dist_index], 2) # fix dimention
-      return bond_energy
+   #    # bond_distances = torch.FloatTensor(bond_distances)
+   #    bond_energy = 0.5 * torch.abs(self.spring_constant_vals[self.bond_dist_index]) * torch.pow(bond_norm - self.equ_val_bond_dist_vals[self.bond_dist_index], 2) # fix dimention
+   #    return bond_energy
    
    # def waterPot(self, bead_pos):
 
@@ -420,20 +423,45 @@ class ForceModel(torch.nn.Module):
          all_dist = bead_pos[..., None, :] - bead_pos[:, None, ...]
          nonbonded_dist = all_dist[:, self.nonbonded_indices[0], self.nonbonded_indices[1], :]
          nonbonded_norm = torch.norm(nonbonded_dist, dim=-1)
+         # cutoff_indices = torch.where(nonbonded_norm > 1.2)
+         # nonbonded_norm = nonbonded_norm * 
+         ###########################
+         x=nonbonded_norm
+         p=12
+         factor = 1.0 / float(1.2)
+         x = x * factor
+      
+         out = 1.0
+         out = out - (((p + 1.0) * (p + 2.0) / 2.0) * torch.pow(x, p))
+         out = out + (p * (p + 2.0) * torch.pow(x, p + 1.0))
+         out = out - ((p * (p + 1.0) / 2) * torch.pow(x, p + 2.0))
+         cutoff_matrix = out * (x < 1.0)
+         #############################
+         # cutoff_matrix = _poly_cutoff(nonbonded_norm, 1.2, p=12)
+         # cutoff_matrix = torch.where(nonbonded_norm > 1.2, 0, 1.0)
+
+         h_bond_norm = torch.norm(all_dist[:, [10,10], [19,18], :], dim=-1)
+
 
          bead_pair_radius = self.get_bead_pair_radii()
 
-         eps             = torch.abs(self.dispertion_const[self.nonbond_dict_index])
-         sigma_over_r    = torch.div(bead_pair_radius, nonbonded_norm)
+         eps             = torch.abs(self.dispertion_const[self.nonbond_dict_index]) 
+         sigma_over_r    = torch.div(bead_pair_radius, nonbonded_norm)* cutoff_matrix
          lj_energy       = 4 * torch.einsum('j,ij->ij', eps, torch.pow(sigma_over_r, 12) - torch.pow(sigma_over_r, 6))
 
-         epsH            = torch.abs(self.bond_H_strength_const[self.nonbond_dict_index])
-         sigma_over_rH   = torch.div(bead_pair_radius, nonbonded_norm)
+         # epsH            = torch.abs(self.bond_H_strength_const[self.nonbond_dict_index]) 
+         # sigma_over_rH   = torch.div(bead_pair_radius, nonbonded_norm)* cutoff_matrix
+         # Hbond_lj_energy = torch.einsum('j,ij->ij', epsH, torch.pow(sigma_over_rH, 6) - torch.pow(sigma_over_rH, 4))
+
+         
+
+         epsH            = torch.abs(self.bond_H_strength_const[self.h_bond_selection]) 
+         sigma_over_rH   = torch.div(bead_pair_radius[self.h_bond_selection], h_bond_norm)
          Hbond_lj_energy = torch.einsum('j,ij->ij', epsH, torch.pow(sigma_over_rH, 6) - torch.pow(sigma_over_rH, 4))
 
          charges = self.bead_charges_vals[self.bead_charge_indices]
-         bead_charge = torch.einsum('i,j->ij', charges, charges)[self.nonbonded_indices[0], self.nonbonded_indices[1]]
-         coulumb_energy = torch.div(bead_charge, nonbonded_norm) * self.f_0 / self.e_r #/ (4 * self.e_0 * torch.pi) #
+         bead_charge = torch.einsum('i,j->ij', charges, charges)[self.nonbonded_indices[0], self.nonbonded_indices[1]] 
+         coulumb_energy = torch.div(bead_charge, nonbonded_norm) * self.f_0 / self.e_r * cutoff_matrix #/ (4 * self.e_0 * torch.pi) #
 
          bond_energy = self.bonds(bead_pos)
 
@@ -446,6 +474,7 @@ class ForceModel(torch.nn.Module):
          proper_dih_energy = self.properDih(bead_pos)
 
          proper_dih_energy_BB = self.properDihBB(bead_pos) 
+
          
          energies = (
             torch.sum(bond_energy) +
@@ -455,7 +484,7 @@ class ForceModel(torch.nn.Module):
             torch.sum(coulumb_energy) +
             torch.sum(lj_energy) +
             torch.sum(Hbond_lj_energy) +
-            torch.sum(proper_dih_energy)
+            torch.sum(proper_dih_energy) 
          )
   
          return energies
@@ -534,3 +563,21 @@ def get_dihedrals(pos: torch.Tensor, dihedral_idcs: torch.Tensor) -> torch.Tenso
    y = torch.einsum("ijk,ikj->ij", torch.cross(b1, v), torch.transpose(w, 1, 2))
 
    return torch.atan2(y, x).reshape(-1, dihedral_idcs.shape[0])
+
+
+@torch.jit.script
+def _poly_cutoff(x: Tensor, r_max: float, p: float = 6.0) -> Tensor:
+    factor = 1.0 / r_max
+    x_scaled = x * factor
+
+    term1 = ((p + 1.0) * (p + 2.0) / 2.0) * torch.pow(x_scaled, p)
+    term2 = p * (p + 2.0) * torch.pow(x_scaled, p + 1.0)
+    term3 = (p * (p + 1.0) / 2.0) * torch.pow(x_scaled, p + 2.0)
+
+    out = 1.0 - term1 + term2 - term3
+
+    # Apply the cutoff condition
+    mask = x_scaled < 1.0
+    out = out * mask
+
+    return out

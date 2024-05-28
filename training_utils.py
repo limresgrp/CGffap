@@ -57,12 +57,34 @@ class TrainSystem(torch.nn.Module):
         self.batched_val_forces_plot = []
         self.initialguess = []
 
-    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt'):
+    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model'):
         self.model.train()
         writer = SummaryWriter()
 
-        optimizer =  Adam(self.model.parameters(), lr = 5e-2) #1e-3, weight_decay = 1e-5
-        loss_fn = MSELoss() #  L1Loss() #  LBFGS(self.model.parameters(), lr=1, max_iter=20, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100, line_search_fn=None) #
+        base_params = [p for name, p in self.named_parameters() if name not in [ 'potential.angle_spring_constant_vals', 
+                                                                            'potential.dihedral_const_vals', 
+                                                                            'potential.dispertion_const',
+                                                                            'potential.bead_radii',
+                                                                            'potential.bead_charges_vals',
+                                                                            'potential.e_r',
+                                                                            'potential.f_0']]
+        
+        charge_params = [p for name, p in self.named_parameters() if name in ['potential.bead_charges_vals',
+                                                                              'potential.e_r',
+                                                                              'potential.f_0']]
+
+        constrained_params = [p for name, p in self.named_parameters() if name in [ 'potential.angle_spring_constant_vals', 
+                                                                            'potential.dihedral_const_vals', 
+                                                                            'potential.dispertion_const',
+                                                                            'potential.bead_radii',
+                                                                            ]]
+
+        optimizer =  Adam([
+                {'params': constrained_params, 'lr': 5e-3, 'weight_decay': 0},
+                {'params': charge_params, 'lr': 1e-5, 'weight_decay': 0},
+                {'params': base_params}
+            ], lr=5e-2) #1e-3, , weight_decay = 1e-5
+        loss_fn = MSELoss() # L1Loss() #    LBFGS(self.model.parameters(), lr=1, max_iter=20, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100, line_search_fn=None) #
         dataset_train = dataset
         dataset_train['bead_pos'] = self.train_pos
         dataset_train['bead_forces'] = self.train_force
@@ -71,14 +93,15 @@ class TrainSystem(torch.nn.Module):
         loader = DataLoader(
             data,
             batch_size = batch_size,
-            num_workers = num_workers
+            num_workers = num_workers,
+            shuffle=True
         )
 
         dataset_val = dataset
         dataset_val['bead_pos'] = self.valid_pos
         dataset_val['bead_forces'] = self.valid_force
 
-        val_loader = DataLoader(CGDataset(dataset_val),batch_size = batch_size, num_workers = num_workers )
+        val_loader = DataLoader(CGDataset(dataset_val),batch_size = len(self.valid_force), num_workers = num_workers )
 
 
         train_losses = []
@@ -89,10 +112,16 @@ class TrainSystem(torch.nn.Module):
         patience_counter = 0
         reps = 10
 
+        # mean_zeroloss = loss_fn(batch['bead_forces']*0, batch['bead_forces'] ).detach().cpu().numpy()
+        # mean_zeroloss_val = loss_fn(val_batch['bead_forces']*0, val_batch['bead_forces'] ).detach().cpu().numpy()
+
+        mean_zeroloss = loss_fn(torch.Tensor(dataset_train['bead_forces'])*0, torch.Tensor(dataset_train['bead_forces']) ).detach().cpu().numpy()
+        mean_zeroloss_val = loss_fn(torch.Tensor(dataset_val['bead_forces'])*0, torch.Tensor(dataset_val['bead_forces']) ).detach().cpu().numpy()
+
 
         for m_epoch in range(1,train_steps):
-            # if m_epoch %10 == 0:
-                # torch.jit.script(self.potential).save(f'modeltrainchigHbondepoch{m_epoch}.pt')
+            if m_epoch %25 == 0:
+                torch.jit.script(self.potential).save('Models/' + model_name + f'{m_epoch}.pt')
 
             loss_plot = []
 
@@ -116,8 +145,7 @@ class TrainSystem(torch.nn.Module):
                 optimizer.zero_grad()
                 out = self.model(batch['bead_pos']) 
                 loss = loss_fn(out, batch['bead_forces'])
-                writer.add_scalar("Loss/train", loss, m_epoch)
-                self.batched_forces_plot = [out.detach().cpu().numpy()  , batch['bead_forces'].detach().cpu().numpy()]
+                # writer.add_scalar("Loss/train", loss, m_epoch)
                 if m_epoch == 1:
                     self.initialguess.append([out.detach().cpu().numpy()  , batch['bead_forces'].detach().cpu().numpy()])
                 loss_plot.append(loss.detach().cpu().numpy())
@@ -132,21 +160,21 @@ class TrainSystem(torch.nn.Module):
 
                 optimizer.step()
                 for n, p in self.model.named_parameters():
-                    if n in [ 'module.angle_spring_constant_vals', 'module.dihedral_const_vals', 'module.proper_dih_const', 'module.proper_dih_const_BB']: #, 'module.lj_const','module.bond_H_strength_const', 'module.dispertion_const'
-                        p.data = p.data.clamp_(min=0)
+                    # if n in [ 'module.angle_spring_constant_vals']: #, 'module.dihedral_const_vals', 'module.proper_dih_const', 'module.proper_dih_const_BB']: #, 'module.lj_const','module.bond_H_strength_const', 'module.dispertion_const'
+                    #     p.data = p.data.clamp_(min=500)
                     if n in ['module.bead_charges_vals']:
                         p.data = p.data.clamp_(min=-1, max=1)
-                    if n in ['module.equ_val_angles_vals', 'module.proper_phase_shift']:
+                    if n in ['module.equ_val_angles_vals', 'module.proper_phase_shift', 'module.proper_phase_shift_BB']:
                         p.data = p.data.clamp_(min=0, max = torch.pi)
                     if n in ['module.bead_radii']:
-                        p.data = p.data.clamp_(min=0.09)
+                        p.data = p.data.clamp_(min=0.12)
                     # self.per_frame.append(loss_plot)
                 # self.losswith0.append(losswith0single)
             # loss_matrix.append(np.mean(loss_plot))
             # print("loss = ",np.mean(loss_plot), "epoch =", m_epoch)
 
-            mean_zeroloss = loss_fn(batch['bead_forces']*0, batch['bead_forces'] ).detach().cpu().numpy()
-            mean_zeroloss_val = loss_fn(val_batch['bead_forces']*0, val_batch['bead_forces'] ).detach().cpu().numpy()
+            
+            
 
             # Print and save results
             mean_train_loss = np.mean(loss_plot)
@@ -161,7 +189,8 @@ class TrainSystem(torch.nn.Module):
             # Save model checkpoint if validation loss improves
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
-                torch.jit.script(self.potential).save(model_name)
+                torch.jit.script(self.potential).save(model_name+'.pt')
+                self.batched_forces_plot = [out.detach().cpu().numpy()  , batch['bead_forces'].detach().cpu().numpy()]
                 patience_counter = 0  # Reset patience counter
             else:
                 patience_counter += 1

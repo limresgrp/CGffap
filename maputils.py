@@ -264,13 +264,42 @@ class EquiValReporter(object):
         angle_indices = np.array([list(map(int, item.split('-'))) for item in angles.keys()])
 
 
+        ###### Remove unwanted indices from indices matrix ####
+        to_remove = np.where(np.array([i.split('_') for i in self.dataset['bead_idnames']])[:,0] == 'TRP')[0]
+        previous_instances = 0
+        previous_center = None
+        temp_angle_indices = []
+        for i in angle_indices:
+            
+            if i[1] == previous_center:
+                previous_instances =+1
+                previous_center = i[1]
+            if previous_instances >= 2:
+                continue
+            elif i[1] in to_remove:
+                continue
+            previous_center = i[1]
+            temp_angle_indices.append(i)
+            
+
+        angle_indices = np.array(temp_angle_indices)
+
+
+
+
+
+
+
         angle_dic : list = yaml.safe_load(Path(conf_angles_path).read_text())
         angle_array = np.array([values for values in angles.values()])
         for i in self.dataset['bead_idnames'][angle_indices]:
             rows = np.where(self.dataset['bead_idnames'][angle_indices[:,1]].__eq__(i[1]))[0]
 
             sides = []
-            sides = np.union1d(np.intersect1d(np.where(self.dataset['bead_idnames'][angle_indices[rows,0]].__eq__(i[2]))[0],np.where(self.dataset['bead_idnames'][angle_indices[rows,2]].__eq__(i[0]))[0]), np.intersect1d(np.where(self.dataset['bead_idnames'][angle_indices[rows,0]].__eq__(i[0]))[0], np.where(self.dataset['bead_idnames'][angle_indices[rows,2]].__eq__(i[2]))[0]))
+            sides = np.union1d(np.intersect1d(np.where(self.dataset['bead_idnames'][angle_indices[rows,0]].__eq__(i[2]))[0],
+                                              np.where(self.dataset['bead_idnames'][angle_indices[rows,2]].__eq__(i[0]))[0]), 
+                                              np.intersect1d(np.where(self.dataset['bead_idnames'][angle_indices[rows,0]].__eq__(i[0]))[0], 
+                                                             np.where(self.dataset['bead_idnames'][angle_indices[rows,2]].__eq__(i[2]))[0]))
             self.sides = sides
             key = str(angle_indices[rows[sides]][0,0]) + "-" +  str(angle_indices[rows[sides]][0,1]) + "-" + str(angle_indices[rows[sides]][0,2])
 
@@ -289,7 +318,7 @@ class EquiValReporter(object):
         return True
     
     def improperDihedralMapper(self, conf_angles_path):
-        dihedral_conf = ['TRP_BB', 6, 'TYR_BB', 5]
+        dihedral_conf = ['TRP_BB', 6, 'TYR_BB', 5, 'TRP_SC1', 5 ] #, 'TRP_BB', 5
         indices = []
         bead_dih = []
         for bead in dihedral_conf:
@@ -316,28 +345,36 @@ class EquiValReporter(object):
                 poses  = self.dataset['bead_pos'][:,residue]
 
             
-            plane1 = [poses[:,0], poses[:,1], poses[:,2]]
-            plane2 = [poses[:,1], poses[:,2], poses[:,3]]
+            # plane1 = [poses[:,0], poses[:,1], poses[:,2]]
+            # plane2 = [poses[:,1], poses[:,2], poses[:,3]]
 
-            vector1 = plane1[0] - plane1[1]
-            vector2 = plane1[2] - plane1[1]
-            vector3 = plane2[0] - plane2[1]
-            vector4 = plane2[2] - plane2[1]
+            # vector1 = plane1[0] - plane1[1]
+            # vector2 = plane1[2] - plane1[1]
+            # vector3 = plane2[0] - plane2[1]
+            # vector4 = plane2[2] - plane2[1]
 
-            unit_vec1 = vector1[:] / np.linalg.norm(vector1, axis=-1)[:,None]
-            unit_vec2 = vector2[:] / np.linalg.norm(vector2, axis=-1)[:,None]
-            unit_vec3 = vector3[:] / np.linalg.norm(vector3, axis=-1)[:,None]
-            unit_vec4 = vector4[:] / np.linalg.norm(vector4, axis=-1)[:,None]
+            # unit_vec1 = vector1[:] / np.linalg.norm(vector1, axis=-1)[:,None]
+            # unit_vec2 = vector2[:] / np.linalg.norm(vector2, axis=-1)[:,None]
+            # unit_vec3 = vector3[:] / np.linalg.norm(vector3, axis=-1)[:,None]
+            # unit_vec4 = vector4[:] / np.linalg.norm(vector4, axis=-1)[:,None]
 
-            binorm1 = np.cross(unit_vec1, unit_vec2, axis=-1) 
-            binorm2 = np.cross(unit_vec3, unit_vec4, axis=-1) 
-            binorm1 /=  np.linalg.norm(binorm1, axis=-1)[:,None]
-            binorm2 /=  np.linalg.norm(binorm2, axis=-1)[:,None]
+            # binorm1 = np.cross(unit_vec1, unit_vec2, axis=-1) 
+            # binorm2 = np.cross(unit_vec3, unit_vec4, axis=-1) 
+            # binorm1 /=  np.linalg.norm(binorm1, axis=-1)[:,None]
+            # binorm2 /=  np.linalg.norm(binorm2, axis=-1)[:,None]
 
-            torsion = np.average(np.arccos(np.sum(binorm1[0] * binorm2[0], axis=-1)) - np.pi)
-            dihedrals[str(residue[0]) + "-" + str(residue[1]) + "-" + str(residue[2]) + "-" + str(residue[3])] = torsion
-
+            # torsion = np.average(np.arccos(np.sum([0] * binorm2[0], axis=-1)) )
+            # torsion = self.compute_dihedral(poses[:,0], poses[:,1], poses[:,2], poses[:,3])
+            # tensor_torsion = self.get_dihedrals(torch.Tensor(self.dataset['bead_pos']), torch.Tensor(residue))
+            dihedrals[str(residue[0]) + "-" + str(residue[1]) + "-" + str(residue[2]) + "-" + str(residue[3])] = 0 #torsion
+        
         dih_indices = np.asanyarray([list(map(int, item.split('-'))) for item in dihedrals.keys()])
+        tensor_torsion = self.get_dihedrals(torch.Tensor(self.dataset['bead_pos']).float(), torch.Tensor(dih_indices).long()).mean(dim=0).numpy()
+
+        for key, val in zip(dihedrals.keys(),tensor_torsion):
+            dihedrals[key] = val
+
+        
         self.dataset['bead_names'][dih_indices[:,0]]
 
         conf_dihedrals: list = yaml.safe_load(Path(conf_angles_path).read_text())
@@ -436,6 +473,89 @@ class EquiValReporter(object):
     
     def getBeadCharges(self):
         return self.config_bead_charge_dict
+    
+
+    def compute_dihedral(self, p1, p2, p3, p4):
+        """
+        Compute the dihedral angle between four points.
+        
+        Parameters:
+        p1, p2, p3, p4 : array-like
+            Coordinates of the four points.
+            
+        Returns:
+        dihedral_angle : float
+            Dihedral angle in degrees.
+        """
+        # Convert points to numpy arrays
+        p1 = np.array(p1)
+        p2 = np.array(p2)
+        p3 = np.array(p3)
+        p4 = np.array(p4)
+
+        # Vectors between points
+        b1 = p2 - p1
+        b2 = p3 - p2
+        b3 = p4 - p3
+
+        # Normalize b2 for accurate normal vector calculation
+        b2 /= np.linalg.norm(b2)
+
+        # Normal vectors to the planes
+        n1 = np.cross(b1, b2)
+        n2 = np.cross(b2, b3)
+
+        # Normalize the normal vectors
+        n1 /= np.linalg.norm(n1)
+        n2 /= np.linalg.norm(n2)
+
+        # Compute the angle between the normal vectors
+
+        dot_product = np.sum(n1 * n2, axis=1)
+        dot_product = np.clip(dot_product, -1.0, 1.0)  # Ensure values are within [-1, 1] to avoid numerical issues
+        angle = np.arccos(dot_product)
+        # angle = np.tensordot(n1,n2,axes=2)
+
+        # Determine the sign of the angle
+        if np.tensordot(np.cross(n1, n2), b2,axes=2) < 0:
+            dihedral_angle = -angle
+
+        else :
+            dihedral_angle = angle
+
+
+        return dihedral_angle
+
+
+    def get_dihedrals(self, pos: torch.Tensor, dihedral_idcs: torch.Tensor) -> torch.Tensor:
+        """ Compute dihedral values (in radiants) over specified dihedral_idcs for every frame in the batch
+
+            :param pos:           torch.Tensor | shape (batch, n_atoms, xyz)
+            :param dihedral_idcs: torch.Tensor | shape (n_dihedrals, 4)
+            :return:              torch.Tensor | shape (batch, n_dihedrals)
+        """
+
+        if len(pos.shape) == 2:
+            pos = torch.unsqueeze(pos, dim=0)
+        p = pos[:, dihedral_idcs, :]
+        p0 = p[..., 0, :]
+        p1 = p[..., 1, :]
+        p2 = p[..., 2, :]
+        p3 = p[..., 3, :]
+
+        b0 = -1.0*(p1 - p0)
+        b1 = p2 - p1
+        b2 = p3 - p2
+
+        b1 = b1 / torch.linalg.vector_norm(b1, dim=-1, keepdim=True)
+
+        v = b0 - torch.einsum("ijk,ikj->ij", b0, torch.transpose(b1, 1, 2))[..., None] * b1
+        w = b2 - torch.einsum("ijk,ikj->ij", b2, torch.transpose(b1, 1, 2))[..., None] * b1
+
+        x = torch.einsum("ijk,ikj->ij", v, torch.transpose(w, 1, 2))
+        y = torch.einsum("ijk,ikj->ij", torch.cross(b1, v), torch.transpose(w, 1, 2))
+
+        return torch.atan2(y, x).reshape(-1, dihedral_idcs.shape[0])
 
 
                                         
