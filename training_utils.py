@@ -1,20 +1,15 @@
-from torch.utils.data import Dataset , DataLoader
-import torch
-from torch.optim import Adam, LBFGS
-from torch.nn import MSELoss, L1Loss
-import torch.nn as nn
-
-from sklearn.model_selection import train_test_split
-
-import yaml
-from pathlib import Path
-from typing import List, Union, Optional, Dict
-
-import numpy as np
 import os
+import torch
+import numpy as np
 
 import training_modules as tm
 import matplotlib.pyplot as plt
+
+from torch.utils.data import Dataset , DataLoader
+from torch.optim import Adam
+from torch.nn import MSELoss
+
+from sklearn.model_selection import train_test_split
 from torch.utils.tensorboard import SummaryWriter
 
 class CGDataset(Dataset):
@@ -50,44 +45,45 @@ class TrainSystem(torch.nn.Module):
         self.per_frame = []  
         self.train_loss = None
         self.valid_loss = None
-        self.train_loss = None
-        self.valid_loss = None
         self.zero = None
         self.losswith0 = []
         self.batched_forces_plot = []
         self.batched_val_forces_plot = []
         self.initialguess = []
 
-    def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
-        self.model.to(device)
-    def initialteTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
+    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
         self.model.to(device)
         writer = SummaryWriter()
-
-        base_params = [p for name, p in self.named_parameters() if name not in [ 'potential.angle_spring_constant_vals', 
-                                                                            'potential.dihedral_const_vals', 
-                                                                            'potential.dispertion_const',
-                                                                            'potential.bead_radii',
-                                                                            'potential.bead_charges_vals',
-                                                                            'potential.e_r',
-                                                                            'potential.f_0']]
         
-        charge_params = [p for name, p in self.named_parameters() if name in ['potential.bead_charges_vals',
-                                                                              'potential.e_r',
-                                                                              'potential.f_0']]
+        charge_param_names = [
+            'potential.bead_charges_vals',
+            'potential.e_r',
+            'potential.f_0',
+        ]
+        charge_params = [p for name, p in self.named_parameters() if name in charge_param_names]
 
-        constrained_params = [p for name, p in self.named_parameters() if name in [ 'potential.angle_spring_constant_vals', 
-                                                                            'potential.dihedral_const_vals', 
-                                                                            'potential.dispertion_const',
-                                                                            'potential.bead_radii',
-                                                                            ]]
+        constrained_param_names = [
+            'potential.angle_spring_constant_vals', 
+            'potential.dihedral_const_vals', 
+            'potential.dispertion_const',
+            'potential.bead_radii',
+        ]
+        constrained_params = [p for name, p in self.named_parameters() if name in constrained_param_names]
+
+        base_params = [
+            p for name, p in self.named_parameters() if name not in (
+                charge_param_names + constrained_param_names
+            )
+        ]
 
         optimizer =  Adam([
                 {'params': constrained_params, 'lr': 5e-3, 'weight_decay': 0},
                 {'params': charge_params, 'lr': 1e-5, 'weight_decay': 0},
                 {'params': base_params}
             ], lr=5e-2) #1e-3, , weight_decay = 1e-5
+        
         loss_fn = MSELoss() # L1Loss() #    LBFGS(self.model.parameters(), lr=1, max_iter=20, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100, line_search_fn=None) #
+        
         dataset_train = dataset
         dataset_train['bead_pos'] = self.train_pos
         dataset_train['bead_forces'] = self.train_force
@@ -96,8 +92,6 @@ class TrainSystem(torch.nn.Module):
         loader = DataLoader(
             data,
             batch_size = batch_size,
-            num_workers = num_workers,
-            shuffle=True,
             num_workers = num_workers,
             shuffle=True,
         )
@@ -112,7 +106,6 @@ class TrainSystem(torch.nn.Module):
             num_workers = num_workers,
             shuffle=False,
         )
-
 
         train_losses = []
         val_losses = []
@@ -131,6 +124,7 @@ class TrainSystem(torch.nn.Module):
 
         for m_epoch in range(1,train_steps):
             if m_epoch %25 == 0:
+                os.makedirs('Models/', exist_ok=True)
                 torch.jit.script(self.potential).save('Models/' + model_name + f'{m_epoch}.pt')
 
             loss_plot = []
@@ -148,14 +142,11 @@ class TrainSystem(torch.nn.Module):
                 self.batched_val_forces_plot = [val_out.detach().cpu().numpy() , val_batch['bead_forces'].detach().cpu().numpy()]
                 val_loss_plot.append(val_loss.detach().cpu().numpy())
 
-
             # Training
             self.model.train()
             for batch in loader:
                 # for epoch in range(0,10):
                 # for batch in loader:
-                for k, v in batch.items():
-                    batch[k] = v.to(device)
                 for k, v in batch.items():
                     batch[k] = v.to(device)
 
@@ -181,8 +172,10 @@ class TrainSystem(torch.nn.Module):
                     #     p.data = p.data.clamp_(min=500)
                     if n in ['module.bead_charges_vals']:
                         p.data = p.data.clamp_(min=-1, max=1)
-                    if n in ['module.equ_val_angles_vals', 'module.proper_phase_shift', 'module.proper_phase_shift_BB']:
+                    if n in ['module.equ_val_angles_vals']:
                         p.data = p.data.clamp_(min=0, max = torch.pi)
+                    if n in ['module.proper_phase_shift', 'module.proper_phase_shift_BB']:
+                        p.data = p.data.clamp_(min=-torch.pi, max = torch.pi)
                     if n in ['module.bead_radii']:
                         p.data = p.data.clamp_(min=0.12)
                     # self.per_frame.append(loss_plot)
@@ -196,10 +189,9 @@ class TrainSystem(torch.nn.Module):
             # Print and save results
             mean_train_loss = np.mean(loss_plot)
             mean_val_loss = np.mean(val_loss_plot)
-            # loss_matrix.append(mean_train_loss)
             print(f"Epoch {m_epoch}: Train Loss = {mean_train_loss:.3f}, Val Loss = {mean_val_loss:.3f}, Zero Loss Train = {mean_zeroloss:.3f}, Zero Loss Val = {mean_zeroloss_val:.3f}")
 
-                # Store losses for plotting
+            # Store losses for plotting
             train_losses.append(mean_train_loss)
             val_losses.append(mean_val_loss)
 
@@ -220,16 +212,12 @@ class TrainSystem(torch.nn.Module):
         writer.flush()
         self.train_loss = np.array(train_losses).reshape(-1)
         self.valid_loss = np.array(val_losses).reshape(-1)
-        self.train_loss = np.array(train_losses).reshape(-1)
-        self.valid_loss = np.array(val_losses).reshape(-1)
             
         return self.model
     
     def plotLosses(self, truncate = 0):
         # Plot losses
         plt.figure(figsize=(10, 5))
-        plt.plot(range(0, len(self.train_loss[truncate:])), self.train_loss[truncate:], label='Training Loss')
-        plt.plot(range(0, len(self.valid_loss[truncate:])), self.valid_loss[truncate:], label='Validation Loss')
         plt.plot(range(0, len(self.train_loss[truncate:])), self.train_loss[truncate:], label='Training Loss')
         plt.plot(range(0, len(self.valid_loss[truncate:])), self.valid_loss[truncate:], label='Validation Loss')
         plt.xlabel('Epoch')
