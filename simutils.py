@@ -29,23 +29,29 @@ class ForceReporter(object):
         return np.array(self.forces)
 
 
-
 class ForceModelConvert(torch.nn.Module):
-   def __init__(
+    def __init__(
         self,
         model,
         pos2unit: float,
         energy2unit: float,
     ):
-      super().__init__()
-      self.model: torch.nn.Module = model
-      self.pos2unit: float = pos2unit
-      self.energy2unit: float = energy2unit
+        super().__init__()
+        self.model: torch.nn.Module = model
+        self.pos2unit: float = pos2unit
+        self.energy2unit: float = energy2unit
 
-   def forward(self, positions: torch.Tensor):
+    def forward(self, positions: torch.Tensor):
+        positions = positions * self.pos2unit
+        potential = self.model(positions)
+                
+        # grads = torch.autograd.grad(
+        # [potential],
+        # [positions],
+        # create_graph=True,  # needed to allow gradients of this output during training
+        # )
 
-      positions = positions * self.pos2unit
-      
-      potential = self.model(positions)
-
-      return potential * self.energy2unit / self.pos2unit**2
+        # print(grads[0])
+        # print(potential)
+        # print('---')
+        return potential * self.energy2unit / self.pos2unit

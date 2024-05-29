@@ -34,10 +34,30 @@ class CGDataset(Dataset):
         return datum
     
 class TrainSystem(torch.nn.Module):
-    def __init__(self, dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges):
+    def __init__(
+        self,
+        dataset,
+        conf_bonds,
+        conf_angles,
+        conf_dihedrals,
+        conf_bead_charges,
+        model_weights = None,
+        pos2unit = 1.,
+        eng2unit = 1.,
+    ):
         super().__init__()
-        self.potential = tm.ForceModel(dataset, conf_bonds, conf_angles, conf_dihedrals, conf_bead_charges)
-        self.model  = tm.ForceMapper(self.potential)
+        potential = tm.ForceModel(
+            dataset,
+            conf_bonds,
+            conf_angles,
+            conf_dihedrals,
+            conf_bead_charges,
+            pos2unit,
+            eng2unit,
+        )
+        if model_weights is not None:
+            potential.load_state_dict(torch.load(model_weights))
+        self.model  = tm.ForceMapper(potential)
 
         self.train_pos, self.valid_pos, self.train_force , self.valid_force = train_test_split(dataset['bead_pos'], dataset['bead_forces'], test_size=0.10, random_state=42)
 
@@ -109,23 +129,19 @@ class TrainSystem(torch.nn.Module):
 
         train_losses = []
         val_losses = []
-        zero_losses = []
         best_val_loss = float('inf')  # Initialize with a large value
         patience = patience  # Number of ep
         patience_counter = 0
-        reps = 10
-
-        # mean_zeroloss = loss_fn(batch['bead_forces']*0, batch['bead_forces'] ).detach().cpu().numpy()
-        # mean_zeroloss_val = loss_fn(val_batch['bead_forces']*0, val_batch['bead_forces'] ).detach().cpu().numpy()
 
         mean_zeroloss = loss_fn(torch.Tensor(dataset_train['bead_forces'])*0, torch.Tensor(dataset_train['bead_forces']) ).detach().cpu().numpy()
         mean_zeroloss_val = loss_fn(torch.Tensor(dataset_val['bead_forces'])*0, torch.Tensor(dataset_val['bead_forces']) ).detach().cpu().numpy()
 
 
-        for m_epoch in range(1,train_steps):
+        for m_epoch in range(1, train_steps):
             if m_epoch %25 == 0:
                 os.makedirs('Models/', exist_ok=True)
-                torch.jit.script(self.potential).save('Models/' + model_name + f'{m_epoch}.pt')
+                torch.save(self.model.module.state_dict(), 'Models/' + model_name + f'{m_epoch}.pth')
+                torch.jit.script(self.model.module).save('Models/' + model_name + f'{m_epoch}.pt')
 
             loss_plot = []
 
@@ -151,7 +167,7 @@ class TrainSystem(torch.nn.Module):
                     batch[k] = v.to(device)
 
                 optimizer.zero_grad()
-                out = self.model(batch['bead_pos']) 
+                out = self.model(batch['bead_pos'])
                 loss = loss_fn(out, batch['bead_forces'])
                 # writer.add_scalar("Loss/train", loss, m_epoch)
                 if m_epoch == 1:
@@ -198,7 +214,10 @@ class TrainSystem(torch.nn.Module):
             # Save model checkpoint if validation loss improves
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
-                torch.jit.script(self.potential).save(model_name+'.pt')
+                os.makedirs('Models/', exist_ok=True)
+                print('Best model!')
+                torch.save(self.model.module.state_dict(), 'Models/' + model_name + '.best.pth')
+                torch.jit.script(self.model.module).save('Models/' + model_name +'.best.pt')
                 self.batched_forces_plot = [out.detach().cpu().numpy()  , batch['bead_forces'].detach().cpu().numpy()]
                 patience_counter = 0  # Reset patience counter
             else:

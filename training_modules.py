@@ -11,7 +11,7 @@ class ForceModel(torch.nn.Module):
          conf_dihedrals: dict,
          conf_bead_charges: dict,
          pos2unit: float = 1.,
-         eng2unit: float = 0.239006,
+         eng2unit: float = 1.,
       ):
       super().__init__()
 
