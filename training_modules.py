@@ -201,16 +201,19 @@ class ForceModel(torch.nn.Module):
 
       self.nonbonded_indices = torch.from_numpy(np.array(self.nonbonded_indices))
 
-      self.bead_radii = torch.nn.Parameter(torch.Tensor([1.200000e-01 for i in range(0,bead_types.max()+1)]))
+      self.bead_radii = torch.nn.Parameter(torch.Tensor([1.2 for i in range(0,bead_types.max()+1)]) * pos2unit)
+
+      bead_pair_selection = self.nonbonded_type_keys[self.nonbond_type_dict_index]
+      self.register_buffer('bead_pair_selection', bead_pair_selection)
 
       self.bead_types = torch.nn.Parameter(torch.Tensor(bead_types))
       
 
-      self.dispertion_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 2.300000e-00  ))
+      self.dispertion_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 2.30))
       # self.lj_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 2.500000e-01  ))
 
       # self.bond_H_lj_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 2.500000e-01 ))
-      self.bond_H_strength_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 1.000000e-01 ))
+      self.bond_H_strength_const = torch.nn.Parameter(torch.Tensor(self.nonbonded_vals * 1.00 )  * pos2unit)
 
 
       ## Charges needs to be per bead type not different for each bead ##
@@ -226,11 +229,7 @@ class ForceModel(torch.nn.Module):
          self.bead_charge_indices.extend(np.where(self.bead_charges_keys == bead_name)[0])
       self.bead_charge_indices = torch.asarray(self.bead_charge_indices)
       self.bead_charge_indices = torch.asarray(self.bead_charge_indices)
-   
-   def get_bead_pair_radii(self):
-      selection = self.nonbonded_type_keys[self.nonbond_type_dict_index]
-      bead_pair_radii = self.bead_radii[selection[:, 0]] + self.bead_radii[selection[:, 1]]
-      return bead_pair_radii
+      
 
    def bonds(self, bead_pos):
       bond_pos = bead_pos[:, self.bond_indices, :]
@@ -360,7 +359,7 @@ class ForceModel(torch.nn.Module):
          # cutoff_matrix = _poly_cutoff(nonbonded_norm, 1.2, p=12)
          # cutoff_matrix = torch.where(nonbonded_norm > 1.2, 0, 1.0)
 
-         bead_pair_radius = self.get_bead_pair_radii()
+         bead_pair_radius = self.bead_radii[self.bead_pair_selection].sum(dim=1)
 
          eps             = torch.abs(self.dispertion_const[self.nonbond_dict_index]) 
          sigma_over_r    = torch.div(bead_pair_radius, nonbonded_norm) * cutoff_matrix
@@ -390,10 +389,10 @@ class ForceModel(torch.nn.Module):
             torch.sum(angle_energy) +
             torch.sum(dihedral_energy) +
             torch.sum(proper_dih_sbbs_energy) +
-            torch.sum(proper_dih_bbbb_energy) +
-            torch.sum(coulumb_energy) +
-            torch.sum(lj_energy) +
-            torch.sum(Hbond_lj_energy)
+            torch.sum(proper_dih_bbbb_energy)
+            # torch.sum(coulumb_energy) +
+            # torch.sum(lj_energy) +
+            # torch.sum(Hbond_lj_energy)
          )
   
          return energies

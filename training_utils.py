@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 import torch
 import numpy as np
 
@@ -56,7 +57,11 @@ class TrainSystem(torch.nn.Module):
             eng2unit,
         )
         if model_weights is not None:
-            potential.load_state_dict(torch.load(model_weights))
+            try:
+                potential.load_state_dict(torch.load(model_weights))
+                print(f"Model weights {model_weights} successfully loaded!")
+            except:
+                print(f"Model weights {model_weights} are missing. Initializing default values.")
         self.model  = tm.ForceMapper(potential)
 
         self.train_pos, self.valid_pos, self.train_force , self.valid_force = train_test_split(dataset['bead_pos'], dataset['bead_forces'], test_size=0.10, random_state=42)
@@ -71,7 +76,17 @@ class TrainSystem(torch.nn.Module):
         self.batched_val_forces_plot = []
         self.initialguess = []
 
-    def initiateTraining(self, train_steps = 10, batch_size = 10, num_workers = 0, dataset: dict = None, patience = 5, model_name = 'best_model.pt', device: str = 'cuda'):
+    def initiateTraining(
+        self,
+        epochs: int = 1000,
+        batch_size: int = 100,
+        num_workers: int = 0,
+        patience: int = 100,
+        checkpoint_every: Optional[int] = None,
+        model_name = 'best_model.pt',
+        device: str = 'cuda',
+        
+    ):
         self.model.to(device)
         writer = SummaryWriter()
         
@@ -104,21 +119,24 @@ class TrainSystem(torch.nn.Module):
         
         loss_fn = MSELoss() # L1Loss() #    LBFGS(self.model.parameters(), lr=1, max_iter=20, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100, line_search_fn=None) #
         
-        dataset_train = dataset
-        dataset_train['bead_pos'] = self.train_pos
-        dataset_train['bead_forces'] = self.train_force
+        dataset_train = {
+            'bead_pos': self.train_pos,
+            'bead_forces': self.train_force
+        }
 
-        data = CGDataset(dataset_train, stride=1)
         loader = DataLoader(
-            data,
+            CGDataset(dataset_train, stride=1),
             batch_size = batch_size,
             num_workers = num_workers,
             shuffle=True,
         )
 
-        dataset_val = dataset
-        dataset_val['bead_pos'] = self.valid_pos
-        dataset_val['bead_forces'] = self.valid_force
+        print(f"Training dataset loaded: {len(loader)} training samples")
+
+        dataset_val = {
+            'bead_pos': self.valid_pos,
+            'bead_forces': self.valid_force
+        }
 
         val_loader = DataLoader(
             CGDataset(dataset_val),
@@ -126,6 +144,8 @@ class TrainSystem(torch.nn.Module):
             num_workers = num_workers,
             shuffle=False,
         )
+
+        print(f"Validation dataset loaded: {len(val_loader)} validation samples")
 
         train_losses = []
         val_losses = []
@@ -137,11 +157,11 @@ class TrainSystem(torch.nn.Module):
         mean_zeroloss_val = loss_fn(torch.Tensor(dataset_val['bead_forces'])*0, torch.Tensor(dataset_val['bead_forces']) ).detach().cpu().numpy()
 
 
-        for m_epoch in range(1, train_steps):
-            if m_epoch %25 == 0:
-                os.makedirs('Models/', exist_ok=True)
-                torch.save(self.model.module.state_dict(), 'Models/' + model_name + f'{m_epoch}.pth')
-                torch.jit.script(self.model.module).save('Models/' + model_name + f'{m_epoch}.pt')
+        for m_epoch in range(1, epochs + 1):
+            if checkpoint_every is not None and (m_epoch % checkpoint_every == 0):
+                os.makedirs('models/', exist_ok=True)
+                torch.save(self.model.module.state_dict(), 'models/' + model_name + f'{m_epoch}.pth')
+                torch.jit.script(self.model.module).save('models/' + model_name + f'{m_epoch}.pt')
 
             loss_plot = []
 
@@ -168,6 +188,8 @@ class TrainSystem(torch.nn.Module):
 
                 optimizer.zero_grad()
                 out = self.model(batch['bead_pos'])
+                # print(out[0])
+                # print(out[0] * 41.84)
                 loss = loss_fn(out, batch['bead_forces'])
                 # writer.add_scalar("Loss/train", loss, m_epoch)
                 if m_epoch == 1:
@@ -199,9 +221,6 @@ class TrainSystem(torch.nn.Module):
             # loss_matrix.append(np.mean(loss_plot))
             # print("loss = ",np.mean(loss_plot), "epoch =", m_epoch)
 
-            
-            
-
             # Print and save results
             mean_train_loss = np.mean(loss_plot)
             mean_val_loss = np.mean(val_loss_plot)
@@ -214,10 +233,10 @@ class TrainSystem(torch.nn.Module):
             # Save model checkpoint if validation loss improves
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
-                os.makedirs('Models/', exist_ok=True)
+                os.makedirs('models/', exist_ok=True)
                 print('Best model!')
-                torch.save(self.model.module.state_dict(), 'Models/' + model_name + '.best.pth')
-                torch.jit.script(self.model.module).save('Models/' + model_name +'.best.pt')
+                torch.save(self.model.module.state_dict(), 'models/' + model_name + '.best.pth')
+                torch.jit.script(self.model.module).save('models/' + model_name +'.best.pt')
                 self.batched_forces_plot = [out.detach().cpu().numpy()  , batch['bead_forces'].detach().cpu().numpy()]
                 patience_counter = 0  # Reset patience counter
             else:

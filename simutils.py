@@ -1,7 +1,13 @@
 import torch
-import torch.nn as nn
 import numpy as np
-import os
+
+from typing import Dict
+from pathlib import Path
+from cgmap.mapping.mapper import Mapper
+
+from openmmtorch import TorchForce
+from openmm.app import PDBFile, Element
+from openmm import System
 
 class ForceReporter(object):
     def __init__(self, file, reportInterval):
@@ -45,6 +51,8 @@ class ForceModelConvert(torch.nn.Module):
         positions = positions * self.pos2unit
         potential = self.model(positions)
                 
+        # - Use to check consistency with training - #
+        
         # grads = torch.autograd.grad(
         # [potential],
         # [positions],
@@ -52,6 +60,113 @@ class ForceModelConvert(torch.nn.Module):
         # )
 
         # print(grads[0])
-        # print(potential)
-        # print('---')
-        return potential * self.energy2unit / self.pos2unit
+
+        # ------------------------------------------ #
+
+        return potential * self.energy2unit
+
+
+def build_system(args_dict: Dict):
+
+    # - Either map atomistic input file to CG or parse CG file - #
+    
+    mapping = Mapper(args_dict=args_dict)
+    mapping.map(index=0)
+    dataset = mapping.dataset
+
+    if args_dict.get('isatomistic', False):
+        inputcg = args_dict.get('inputcg', None)
+        if inputcg is None:
+            p = Path(args_dict.get('input'))
+            inputcg = str(Path(p.parent, p.stem + '.CG' + p.suffix))
+            args_dict['inputcg'] = inputcg
+        mapping.save(filename=inputcg)
+    else:
+        args_dict['inputcg'] = args_dict.get('input')
+
+    # - Compute the mass of each bead - #
+
+    bead_mass_dict = []
+    for atoms in dataset["bead2atom_idcs"]:
+        bead_mass = None
+        for j in atoms[atoms > -1]:
+            atom_type = dataset['atom_types'][j]
+            if bead_mass is None:
+                bead_mass = Element._elements_by_atomic_number[atom_type].mass
+            else:
+                bead_mass += Element._elements_by_atomic_number[atom_type].mass
+        bead_mass_dict.append(bead_mass)
+    dataset['bead_mass'] = bead_mass_dict
+    bead_mass_dict = {}
+    for idname, bead_mass in zip(dataset['bead_idnames'], dataset['bead_mass']):
+        bead_mass_dict[idname] = bead_mass
+    
+    # - Load CG pdb file into OpenMM - #
+    
+    pdb = PDBFile(args_dict.get('inputcg'))
+
+    # - Create one Element object for each bead type, assigning the bead mass to it - #
+
+    starting_atomic_number = 200
+    unique_bead_idnames = np.unique(dataset['bead_idnames'])
+    for atom, bead_idname in zip(pdb.topology.atoms(), np.unique(dataset['bead_idnames'])):
+        i = dataset['bead_types'][np.where(unique_bead_idnames == bead_idname)][0]
+        mass = bead_mass_dict[bead_idname]
+        atomic_number = starting_atomic_number + i
+        symbol = str(i)
+        try:
+            atom.element = Element.getByAtomicNumber(atomic_number)
+        except:
+            atom.element = Element(
+                number=atomic_number,
+                name=bead_idname,
+                symbol=symbol,
+                mass=mass
+            )
+
+    # - Create System and add beads as particles - #
+
+    system = System()
+
+    for atom in pdb.topology.atoms():
+        system.addParticle(atom.element.mass)
+    
+    # boxVectors = pdb.topology.getPeriodicBoxVectors()
+    # if boxVectors is not None:
+    #     system.setDefaultPeriodicBoxVectors(boxVectors[0], boxVectors[1], boxVectors[2])
+    # print(boxVectors)
+    # system.usesPeriodicBoundaryConditions()
+    
+    # - Ensure that the system does not contain any force or constraint - #
+    
+    while system.getNumForces() > 0:
+        system.removeForce(0)
+        
+    assert system.getNumConstraints() == 0
+    assert system.getNumForces() == 0
+
+    # - Wrap trained module to interface with OpenMM            - #
+    # - Convert model unit of measure to OpenMM unit of measure - #
+    
+    trained_module_filename = args_dict.get('model')
+    trained_module = torch.jit.load(trained_module_filename)
+    wrapper_module = ForceModelConvert(
+        trained_module,
+        pos2unit=args_dict.get('pos2unit', 1.0),
+        energy2unit=args_dict.get('energy2unit', 1.0),
+    )
+    wrapper_module.to('cpu')
+    ff_module = torch.jit.script(
+        wrapper_module
+    )
+
+    p = Path(trained_module_filename)
+    ff_module_filename = str(Path(p.parent, p.stem + '.ff' + p.suffix))
+    ff_module.save(ff_module_filename)
+
+    # - Load and assign the wrapped force field model to the system - #
+
+    ff = TorchForce(ff_module_filename)
+    system.addForce(ff)
+    
+    return system, pdb
