@@ -36,7 +36,7 @@ class ForceModel(torch.nn.Module):
       self.bond_indices = torch.from_numpy(bond_indices)
       
       self.equ_val_bond_dist_keys = np.array(list(conf_bonds.keys()))
-      self.equ_val_bond_dist_vals = torch.nn.Parameter(torch.tensor(list(conf_bonds.values())) * pos2unit)
+      self.register_buffer("equ_val_bond_dist_vals", torch.tensor(list(conf_bonds.values())) * pos2unit)
       self.spring_constant_vals   = torch.nn.Parameter(100. * torch.ones_like(self.equ_val_bond_dist_vals) * eng2unit)
 
       bond_dist_index = []
@@ -55,7 +55,7 @@ class ForceModel(torch.nn.Module):
       self.angle_indices = torch.from_numpy(angle_indices)
 
       self.equ_val_angles_keys        = np.array(list(conf_angles.keys()))
-      self.equ_val_angles_vals        = torch.nn.Parameter(torch.tensor(list(conf_angles.values())))
+      self.register_buffer('equ_val_angles_vals', torch.tensor(list(conf_angles.values())))
       self.angle_spring_constant_vals = torch.nn.Parameter(10. * torch.ones_like(self.equ_val_angles_vals) * eng2unit)
 
       angle_rad_index = []
@@ -74,7 +74,7 @@ class ForceModel(torch.nn.Module):
       self.improper_dih_indices = torch.from_numpy(improper_dih_indices)
 
       self.equ_val_dihedrals_keys = np.array(list(conf_dihedrals.keys()))
-      self.equ_val_dihedrals_vals = torch.nn.Parameter(torch.tensor(list(conf_dihedrals.values())))
+      self.register_buffer("equ_val_dihedrals_vals", torch.tensor(list(conf_dihedrals.values())))
       self.dihedral_const_vals    = torch.nn.Parameter(1. * torch.ones_like(self.equ_val_dihedrals_vals) * eng2unit)
 
       dih_rad_index = []
