@@ -39,11 +39,13 @@ class ForceModelConvert(torch.nn.Module):
     def __init__(
         self,
         model,
+        bead_types: torch.Tensor,
         pos2unit: float,
         energy2unit: float,
     ):
         super().__init__()
         self.model: torch.nn.Module = model
+        self.model.set_bead_types(bead_types)
         self.pos2unit: float = pos2unit
         self.energy2unit: float = energy2unit
 
@@ -152,6 +154,7 @@ def build_system(args_dict: Dict):
     trained_module = torch.jit.load(trained_module_filename)
     wrapper_module = ForceModelConvert(
         trained_module,
+        bead_types=torch.from_numpy(dataset['bead_types']),
         pos2unit=args_dict.get('pos2unit', 1.0),
         energy2unit=args_dict.get('energy2unit', 1.0),
     )

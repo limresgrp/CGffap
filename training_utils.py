@@ -45,6 +45,7 @@ class TrainSystem(torch.nn.Module):
         model_weights = None,
         pos2unit = 1.,
         eng2unit = 1.,
+        num_bead_types = None,
     ):
         super().__init__()
         potential = tm.ForceModel(
@@ -55,6 +56,7 @@ class TrainSystem(torch.nn.Module):
             conf_bead_charges,
             pos2unit,
             eng2unit,
+            num_bead_types,
         )
         if model_weights is not None:
             try:
@@ -80,28 +82,27 @@ class TrainSystem(torch.nn.Module):
         self,
         epochs: int = 1000,
         batch_size: int = 100,
+        lr: float = 1.e-3,
         num_workers: int = 0,
         patience: int = 100,
         checkpoint_every: Optional[int] = None,
-        model_name = 'best_model.pt',
+        model_name = 'model',
         device: str = 'cuda',
-        
     ):
         self.model.to(device)
         writer = SummaryWriter()
         
         charge_param_names = [
-            'potential.bead_charges_vals',
-            'potential.e_r',
-            'potential.f_0',
+            'model.module.bead_charges_vals',
+            'model.module.f_r',
         ]
         charge_params = [p for name, p in self.named_parameters() if name in charge_param_names]
 
         constrained_param_names = [
-            'potential.angle_spring_constant_vals', 
-            'potential.dihedral_const_vals', 
-            'potential.dispertion_const',
-            'potential.bead_radii',
+            'model.module.angle_spring_constant_vals', 
+            'model.module.improper_dihedral_const_vals', 
+            'model.module.dispertion_const',
+            'model.module.bead_radii',
         ]
         constrained_params = [p for name, p in self.named_parameters() if name in constrained_param_names]
 
@@ -115,7 +116,11 @@ class TrainSystem(torch.nn.Module):
                 {'params': constrained_params, 'lr': 5e-3, 'weight_decay': 0},
                 {'params': charge_params, 'lr': 1e-5, 'weight_decay': 0},
                 {'params': base_params}
-            ], lr=5e-2) #1e-3, , weight_decay = 1e-5
+            ],
+            lr=lr,
+            betas=(0.9, 0.999),
+            eps=1e-08,
+        )
         
         loss_fn = MSELoss() # L1Loss() #    LBFGS(self.model.parameters(), lr=1, max_iter=20, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100, line_search_fn=None) #
         
@@ -131,7 +136,7 @@ class TrainSystem(torch.nn.Module):
             shuffle=True,
         )
 
-        print(f"Training dataset loaded: {len(loader)} training samples")
+        print(f"Training dataset loaded: {len(self.train_pos)} training samples")
 
         dataset_val = {
             'bead_pos': self.valid_pos,
@@ -145,7 +150,7 @@ class TrainSystem(torch.nn.Module):
             shuffle=False,
         )
 
-        print(f"Validation dataset loaded: {len(val_loader)} validation samples")
+        print(f"Validation dataset loaded: {len(self.valid_pos)} validation samples")
 
         train_losses = []
         val_losses = []
@@ -215,7 +220,7 @@ class TrainSystem(torch.nn.Module):
                     if n in ['module.proper_phase_shift', 'module.proper_phase_shift_BB']:
                         p.data = p.data.clamp_(min=-torch.pi, max = torch.pi)
                     if n in ['module.bead_radii']:
-                        p.data = p.data.clamp_(min=0.12)
+                        p.data = p.data.clamp_(min=1.2)
                     # self.per_frame.append(loss_plot)
                 # self.losswith0.append(losswith0single)
             # loss_matrix.append(np.mean(loss_plot))
