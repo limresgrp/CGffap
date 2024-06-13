@@ -220,7 +220,7 @@ class TrainSystem(torch.nn.Module):
                     if n in ['module.proper_phase_shift', 'module.proper_phase_shift_BB']:
                         p.data = p.data.clamp_(min=-torch.pi, max = torch.pi)
                     if n in ['module.bead_radii']:
-                        p.data = p.data.clamp_(min=1.2)
+                        p.data = p.data.clamp_(min=1.2 * self.model.module.pos2unit)
                     # self.per_frame.append(loss_plot)
                 # self.losswith0.append(losswith0single)
             # loss_matrix.append(np.mean(loss_plot))

@@ -20,6 +20,7 @@ class ForceModel(torch.nn.Module):
       # ----- MISC ----- #
       
       self.r_max = 10. * pos2unit
+      self.pos2unit = pos2unit
 
       # ----- DATASET ----- #
 
@@ -157,7 +158,7 @@ class ForceModel(torch.nn.Module):
       # --- COULOMB --- #
       
       # Join f and eps_r in a single parameter called f_r
-      self.f_r = torch.nn.Parameter(torch.Tensor([3.3206])) # 3.3206 (A * kcal) / (mol * e**2) == 138.935 (nm * kJ) / (mol * e**2)
+      self.f_r = torch.nn.Parameter(torch.Tensor([3.3206]) * pos2unit / eng2unit) # 3.3206 (A * kcal) / (mol * e**2) == 138.935 (nm * kJ) / (mol * e**2)
       bead_charges_vals = torch.zeros(num_bead_types, dtype=torch.get_default_dtype())
 
       for bead_idname, charge_value in conf_bead_charges.items():
