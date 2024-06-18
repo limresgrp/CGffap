@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 import numpy as np
 import os
@@ -218,6 +219,32 @@ class EquiValReporter(object):
 
     def angleMapper(self, conf_angles_path):
 
+        bond_idcs = self.dataset["bond_indices"]
+        angle_dic : list = yaml.safe_load(Path(conf_angles_path).read_text())
+
+        # Angles
+        df1A = pd.DataFrame(bond_idcs, columns=['a1', 'a2'])
+        df1B = pd.DataFrame(bond_idcs, columns=['a2', 'a1'])
+        df2  = pd.DataFrame(bond_idcs, columns=['a2', 'a3'])
+        df3A = df1A.merge(df2, how='outer')
+        df3A = df3A.dropna().astype(int)
+        df3B = df1B.merge(df2, how='outer')
+        df3B = df3B.dropna().astype(int)
+        cols = df3B.columns.to_list()
+        cols[:2] = cols[1::-1]
+        df3B = df3B[cols]
+        df3B = df3B[df3B['a1'] != df3B['a3']]
+        df3B[['a1', 'a3']] = pd.DataFrame(np.sort(df3B[['a1', 'a3']], axis=1), index=df3B.index)
+        df3B = df3B.drop_duplicates()
+        self.dataset['angle_indices'] = np.concatenate([df3A.values, df3B.values])
+
+        angle_dic : list = yaml.safe_load(Path(conf_angles_path).read_text())
+        self.config_angles_dict = angle_dic
+
+        return True
+
+    def OldangleMapper(self, conf_angles_path):
+
         bonds = self.dataset["bond_indices"]
         angle_beads = []
         angles = {}
@@ -283,11 +310,6 @@ class EquiValReporter(object):
             
 
         angle_indices = np.array(temp_angle_indices)
-
-
-
-
-
 
 
         angle_dic : list = yaml.safe_load(Path(conf_angles_path).read_text())
