@@ -192,7 +192,7 @@ class TrainSystem(torch.nn.Module):
                     batch[k] = v.to(device)
 
                 optimizer.zero_grad()
-                out = self.model(batch['bead_pos'])
+                out = self.model(batch['bead_pos']) # dimention of out (batch_size (number of frames for the batch), number of beads, 3)
                 # print(out[0])
                 # print(out[0] * 41.84)
                 loss = loss_fn(out, batch['bead_forces'])

@@ -4,6 +4,13 @@ import numpy as np
 from torch import Tensor
 
 class ForceModel(torch.nn.Module):
+   '''
+   Computes the potential energy of the system given the positions of the beads.
+   It is generated specifically for the system at hand.
+   The required config files are provided at the initialisation step.
+   It's output is used to compute the forces using autograd.
+   
+   '''
    def __init__(
          self,
          dataset,
@@ -178,6 +185,7 @@ class ForceModel(torch.nn.Module):
       bonded_pair_idcs = torch.stack([torch.sort(pair).values for pair in torch.cat([
             self.bond_indices,
             self.angle_indices[:, ::2],
+            self.improper_dih_indices[:, ::3],
             self.proper_sbbs_indices[:, ::3],
             self.proper_bbbb_indices[:, ::3],
          ], dim=0)
